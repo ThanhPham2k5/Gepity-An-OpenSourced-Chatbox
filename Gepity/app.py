@@ -1,19 +1,27 @@
 import streamlit as st
+from langchain_ollama import OllamaLLM
 
-st.set_page_config(page_title="SmartDoc AI", layout="wide")
+# setup
+st.set_page_config(page_title="Gepity AI", layout="wide")
 
-st.title("🤖 Gepity")
-st.caption("Upload PDF và đặt câu hỏi")
+llm = OllamaLLM(
+    model="qwen2.5:7b",
+    base_url="http://172.25.64.1:11434"
+)
 
-# Sidebar
-with st.sidebar:
-    st.header("⚙️ Cài đặt")
-    st.info("Model: Qwen2.5:7b")
+# get request from user
+user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
 
-# Main area
-uploaded_file = st.file_uploader("📄 Upload PDF", type="pdf")
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-if uploaded_file:
-    st.success(f"✅ Đã upload: {uploaded_file.name}")
+# store response into session
+if user_req != None:
+    response = llm.invoke(user_req);
+    st.session_state.messages.append({"role": "user", "content": user_req})
+    st.session_state.messages.append({"role": "ai", "content": response})
 
-question = st.text_input("💬 Đặt câu hỏi về tài liệu...")
+# response (entire history)
+for messages in st.session_state.messages:
+    with st.chat_message(messages["role"]):
+        st.write(messages["content"])

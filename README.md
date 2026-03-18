@@ -57,6 +57,16 @@ make pull-model
 
 ### Running the App
 
+In PowerShell (Windows):
+
+```bash
+$env:CUDA_VISIBLE_DEVICES="-1"
+$env:OLLAMA_HOST="0.0.0.0"
+ollama serve
+```
+
+In VM:
+
 ```bash
 make run
 ```
