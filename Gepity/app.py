@@ -2,7 +2,7 @@ import streamlit as st
 
 st.set_page_config(page_title="SmartDoc AI", layout="wide")
 
-st.title("🤖 SmartDoc AI")
+st.title("🤖 Gepity")
 st.caption("Upload PDF và đặt câu hỏi")
 
 # Sidebar
