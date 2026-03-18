@@ -1,0 +1,17 @@
+# Virtual environment
+venv/
+myenv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# PDF uploads (data người dùng)
+Gepity/data/
+*.pdf
+
+# Vector store (generated files)
+Gepity/faiss_index/
+
+# IDE
+.vscode/
