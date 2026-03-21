@@ -9,6 +9,7 @@ run:
 	$(VENV)/bin/streamlit run app.py
 
 pull-model:
+	ollama pull qwen2.5:3b
 	ollama pull qwen2.5:7b
 
 clean:
