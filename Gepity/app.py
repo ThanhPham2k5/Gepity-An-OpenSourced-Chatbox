@@ -4,7 +4,6 @@ from datetime import datetime
 import streamlit.components.v1 as components
 from utils import img_to_base64
 from core import RAG_engine
-import time
 
 
 # SETUP & SESSIONS -------------------------------------------------------
@@ -128,7 +127,7 @@ with st.container(height=480):
                 css_class = 'user_bubble' if is_user else 'ai_bubble'
                 avatar = user_bubble if is_user else ai_bubble
                 name = "Bạn" if is_user else "Gepity"
-                time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
+                time_str = msg.get("time", datetime.now().strftime("%H:%M · %d/%m/%Y")) # use current time if not provided
 
                 st.markdown(f"""
                     <div class="bubble-header-{css_class}">
@@ -143,24 +142,12 @@ with st.container(height=480):
 
     redraw_chats()
         
-# store response into session -------------------------------------------------------
-if user_req != None:
-    st.session_state.messages.append({"role": "user", "content": user_req})
-
-    redraw_chats()
-
-    with st.spinner("Gepity đang suy nghĩ..."):
-        response = rag_query(user_req)
-        st.session_state.messages.append({"role": "ai", "content": response})
-
-    st.rerun()
-
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
 st.markdown('<div class="uploader-anchor"></div>', unsafe_allow_html=True)
 
 with st.popover("Đính kèm", use_container_width=False):
     #upload file
-upload_file = st.file_uploader(
+    upload_file = st.file_uploader(
         label="Upload tài liệu",
         type=["pdf", "docx"],
         help="Hỗ trợ PDF và DOCX",
@@ -184,16 +171,18 @@ upload_file = st.file_uploader(
 user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
 
 # store response into session
-if user_req != None:
+if user_req:
     # add user request to session
-    st.session_state.messages.append({"role": "user", "content": user_req})
+    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
+
+    redraw_chats()
 
     # get response from llm with loading spinner
     with st.spinner("Gepity đang suy nghĩ..."):
         response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
-
-    # add llm's response to session
-    st.session_state.messages.append({"role": "ai", "content": response})
+        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+        st.session_state.messages.append({"role": "ai", "content": response, "time": ai_time}) # add llm's response to session
 
     st.rerun()
 

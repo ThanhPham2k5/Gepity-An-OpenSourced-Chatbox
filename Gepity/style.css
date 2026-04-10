@@ -491,6 +491,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   border-bottom-right-radius: 12px;
   max-width: 600px;
   word-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 .ai_bubble {
