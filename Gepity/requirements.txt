@@ -5,6 +5,9 @@ langchain-ollama
 faiss-cpu
 sentence-transformers
 pdfplumber
+docx2txt
+reportlab
+pytest
 pypdf
 ollama
 --extra-index-url https://download.pytorch.org/whl/cpu
