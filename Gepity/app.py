@@ -16,12 +16,14 @@ from langchain_core.prompts import PromptTemplate
 
 # setup -------------------------------------------------------
 st.set_page_config(page_title="Gepity AI", layout="wide")
-
-llm = OllamaLLM(
-    # model="qwen2.5:7b",
-    model="qwen2.5:3b",
-    base_url="http://172.25.64.1:11434"
-)
+@st.cache_resource
+def get_llm():
+    return OllamaLLM(
+        model="qwen2.5:3b",
+        base_url="http://localhost:11434"
+    )
+ 
+llm = get_llm()
 
 # insert css -------------------------------------------------------
 def load_css(file_path):
@@ -52,7 +54,11 @@ if "retriever" not in st.session_state:
 if "vector_store" not in st.session_state:
     st.session_state.vector_store = None
 
+if "loaded_files" not in st.session_state:
+    st.session_state.loaded_files = []
+
 # embedder -------------------------------------------------------
+@st.cache_resource
 def get_embedder():
     return HuggingFaceEmbeddings(
         model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
@@ -67,6 +73,7 @@ def load_document(uploaded_files: list):
 
     all_docs = []
     for uploaded_file in uploaded_files:
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
             tmp_file.write(uploaded_file.read())
             tmp_file_path = tmp_file.name
@@ -125,19 +132,25 @@ def build_prompt(context: str, user_input: str) -> str:
 def rag_query(user_input: str) -> str:
     retriever = st.session_state.retriever
     if retriever is None:
-        return llm.invoke(user_input)
+        return "Bạn chưa upload tài liệu nào. Vui lòng upload PDF hoặc DOCX trước khi đặt câu hỏi."
     # query embedding + similarity search
-    relevant_docs = retriever.invoke(user_input)
-    # Context building
-    context = "\n\n".join([doc.page_content for doc in relevant_docs])
+    try:
+        relevant_docs = retriever.invoke(user_input)
+        # Context building
+        context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
-    # build prompt
-    prompt = build_prompt(context, user_input)
+        # build prompt
+        prompt = build_prompt(context, user_input)
 
-    # llm response
-    response = llm.invoke(prompt)
+        # llm response
+        response = llm.invoke(prompt)
 
-    return response
+        return response
+    except Exception as e:
+        return f"Đã xảy ra lỗi khi kết nối với model: {e}"
+    
+
+
 # sidebar section -------------------------------------------------------
 with st.sidebar:
     st.markdown(f"""
@@ -267,11 +280,15 @@ if upload_file:
         st.session_state["last_file_key"] = file_key
 
         with st.spinner("Gepity đang xử lý tài liệu..."):
-            retriever, vector_store, num_chunks, num_docs = load_document(upload_file)
-            st.session_state.retriever = retriever
-            st.session_state.vector_store = vector_store
-        
-        st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
+            try:
+                retriever, vector_store, num_chunks, num_docs = load_document(upload_file)
+                st.session_state.retriever = retriever
+                st.session_state.vector_store = vector_store
+                st.session_state.loaded_files = [f.name for f in upload_file]
+                st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
+
+            except Exception as e:
+                st.error(f"Đã xảy ra lỗi khi xử lý tài liệu: {e}")
 
 # javascript -------------------------------------------------------
 if st.session_state.messages:
