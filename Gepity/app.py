@@ -11,7 +11,7 @@ st.set_page_config(page_title="Gepity AI", layout="wide")
 llm = OllamaLLM(
     # model="qwen2.5:7b",
     model="qwen2.5:3b",
-    base_url="http://172.25.64.1:11434"
+    base_url="http://localhost:11434"
 )
 
 # insert css
