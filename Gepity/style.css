@@ -3,6 +3,11 @@ section[data-testid="stSidebar"] {
   background-color: #2c2f33;
   color: #fff;
   height: 100%;
+  overflow: hidden;
+}
+
+section[data-testid="stSidebar"]:last-child {
+  display: none;
 }
 
 .logo {
@@ -57,6 +62,7 @@ section[data-testid="stSidebar"] {
   padding: 8px 10px;
   font-weight: 600;
   transition: all 0.1s linear;
+  color: #fff;
 }
 
 .sidebar-button:hover {
@@ -335,6 +341,7 @@ div[data-testid="stFileUploader"] div ul {
 div[data-testid="stMainBlockContainer"] {
   padding: 0;
   margin: 0;
+  overflow: hidden;
 }
 
 /* upload file */
@@ -501,6 +508,30 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   margin-bottom: 30px;
 }
 
+/* ai loading */
+div[data-testid="stSpinner"] {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0;
+}
+
+div[data-testid="stSpinner"] > div {
+  position: relative !important;
+  height: auto !important;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: row;
+  gap: 10px;
+}
+
+div[data-testid="stSpinner"] i {
+  width: 25px !important;
+  height: 25px !important;
+  border-top-color: #007bff !important;
+}
+
 /* multi file */
 div[data-testid="stFileUploaderPagination"] {
   justify-content: center;
@@ -521,6 +552,91 @@ button[data-testid="stBaseButton-minimal"] svg:hover {
   color: #007bff;
 }
 
+/* uploader anchor */
+.stPopover {
+  justify-self: end;
+  align-self: flex-end;
+}
+
+.stPopover div button {
+  transition: all 0.1s linear;
+}
+
+.stPopover div button:last-child svg {
+  transition: all 0.1s linear;
+}
+
+.stPopover div button:hover,
+.stPopover div button:focus:not(:active) {
+  border-color: #007bff;
+  color: #007bff;
+  transform: translateY(-1px);
+}
+
+.stPopover div button:focus-visible {
+  box-shadow: #007bff 0px 0px 0px 0.2rem;
+}
+
+.stPopover div button:active {
+  background-color: #007bff;
+  outline: none;
+}
+
+.uploader-popover-anchor + div {
+  position: fixed;
+  bottom: 25px;
+  left: 20px;
+  z-index: 9999;
+}
+
+.uploader-popover-anchor + div button {
+  border-radius: 50px;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+  color: #494c4f;
+  transition: all 0.2s ease-in-out;
+}
+
+.uploader-popover-anchor + div button:hover {
+  border-color: #007bff;
+  color: #007bff;
+}
+
+div[data-testid="stBottomBlockContainer"] {
+  padding-left: 120px;
+}
+
+.uploader-anchor + div {
+  position: fixed;
+  bottom: 35px;
+  right: 85px;
+  z-index: 9999;
+}
+
+.uploader-anchor + div button {
+  padding: 4px 12px;
+  border-radius: 20px;
+  background-color: #f0f2f6;
+  color: #494c4f;
+  border: 1px solid #e6e9ef;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: 0;
+  transition: all 0.2s ease-in-out;
+}
+
+.uploader-anchor + div button:hover {
+  border-color: #007bff;
+  color: #007bff;
+  background-color: #ffffff;
+}
+
+div[data-testid="stChatInput"] textarea {
+  padding-right: 140px !important;
+}
+
 /* chat input */
 div[data-testid="stBottomBlockContainer"] {
   background-color: #fff;
@@ -533,6 +649,10 @@ div[data-testid="stChatInput"] {
   border-radius: 12px;
   background-color: #fff;
   color: #212529;
+}
+
+div[data-testid="stChatInput"] div div {
+  border-color: #212529;
 }
 
 textarea[data-testid="stChatInputTextArea"],

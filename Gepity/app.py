@@ -5,6 +5,7 @@ import os
 from datetime import datetime 
 import streamlit.components.v1 as components
 import tempfile
+import time
 
 from langchain_community.document_loaders import PDFPlumberLoader
 
@@ -20,7 +21,7 @@ st.set_page_config(page_title="Gepity AI", layout="wide")
 llm = OllamaLLM(
     # model="qwen2.5:7b",
     model="qwen2.5:3b",
-    base_url="http://172.25.64.1:11434"
+    base_url="http://localhost:11434"
 )
 
 # insert css -------------------------------------------------------
@@ -138,6 +139,7 @@ def rag_query(user_input: str) -> str:
     response = llm.invoke(prompt)
 
     return response
+
 # sidebar section -------------------------------------------------------
 with st.sidebar:
     st.markdown(f"""
@@ -218,60 +220,70 @@ st.markdown(f"""
 # get request from user -------------------------------------------------------
 user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
 
-# store response into session -------------------------------------------------------
-if user_req != None:
-    st.session_state.messages.append({"role": "user", "content": user_req})
-
-    with st.spinner("Gepity đang suy nghĩ..."):
-        response = rag_query(user_req)
-
-    st.session_state.messages.append({"role": "ai", "content": response})
-
 # response (entire history) -------------------------------------------------------
 user_bubble = img_to_base64("assets/img/user-ico.png")
 ai_bubble = img_to_base64("assets/img/ai-ico.png")
 
-with st.container(height=356):
-    for msg in st.session_state.messages:
-        is_user = msg["role"] == 'user'
-        css_class = 'user_bubble' if is_user else 'ai_bubble'
-        avatar = user_bubble if is_user else ai_bubble
-        name = "Bạn" if is_user else "Gepity"
-        time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
+with st.container(height=480):
+    chat_placeholder = st.empty()
+    
+    def redraw_chats():
+        with chat_placeholder.container():
+            for msg in st.session_state.messages:
+                is_user = msg["role"] == 'user'
+                css_class = 'user_bubble' if is_user else 'ai_bubble'
+                avatar = user_bubble if is_user else ai_bubble
+                name = "Bạn" if is_user else "Gepity"
+                time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
 
-        st.markdown(f"""
-            <div class="bubble-header-{css_class}">
-                <img src="data:image/png;base64,{avatar}" alt="{avatar}.png" class="{css_class}-ico"/>
-                <div class="bubble-answer-{css_class}">
-                    <span class="bubble-name">{name}</span>
-                    <div class="{css_class}">
-                        {msg["content"]}
+                st.markdown(f"""
+                    <div class="bubble-header-{css_class}">
+                        <img src="data:image/png;base64,{avatar}" class="{css_class}-ico"/>
+                        <div class="bubble-answer-{css_class}">
+                            <span class="bubble-name">{name}</span>
+                            <div class="{css_class}">{msg["content"]}</div>
+                            <span class="bubble-time">{time_str}</span>
+                        </div>
                     </div>
-                    <span class="bubble-time">{time_str}</span>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+
+    redraw_chats()
+        
+# store response into session -------------------------------------------------------
+if user_req != None:
+    st.session_state.messages.append({"role": "user", "content": user_req})
+
+    redraw_chats()
+
+    with st.spinner("Gepity đang suy nghĩ..."):
+        response = rag_query(user_req)
+        st.session_state.messages.append({"role": "ai", "content": response})
+
+    st.rerun()
 
 # uploader file -------------------------------------------------------
-upload_file = st.file_uploader(
-    label="Upload tài liệu",
-    type=["pdf", "docx"],
-    help="Hỗ trợ PDF và DOCX",
-    label_visibility="collapsed",
-    accept_multiple_files=True
-)
+st.markdown('<div class="uploader-anchor"></div>', unsafe_allow_html=True)
 
-if upload_file:
-    file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
-    if st.session_state.get("last_file_key") != file_key:
-        st.session_state["last_file_key"] = file_key
+with st.popover("Đính kèm", use_container_width=False):
+    upload_file = st.file_uploader(
+        label="Upload tài liệu",
+        type=["pdf", "docx"],
+        help="Hỗ trợ PDF và DOCX",
+        label_visibility="collapsed",
+        accept_multiple_files=True
+    )
 
-        with st.spinner("Gepity đang xử lý tài liệu..."):
-            retriever, vector_store, num_chunks, num_docs = load_document(upload_file)
-            st.session_state.retriever = retriever
-            st.session_state.vector_store = vector_store
-        
-        st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
+    if upload_file:
+        file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
+        if st.session_state.get("last_file_key") != file_key:
+            st.session_state["last_file_key"] = file_key
+
+            with st.spinner("Gepity đang xử lý tài liệu..."):
+                retriever, vector_store, num_chunks, num_docs = load_document(upload_file)
+                st.session_state.retriever = retriever
+                st.session_state.vector_store = vector_store
+            
+            st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
 
 # javascript -------------------------------------------------------
 if st.session_state.messages:
