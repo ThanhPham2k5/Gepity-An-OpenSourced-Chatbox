@@ -50,19 +50,15 @@ make install
 **4. Pull the LLM model** _(requires Ollama to be installed)_
 
 ```bash
-make pull-model
+sudo snap install ollama
+ollama pull qwen2.5:3b
+ollama list
+ollama serve
 ```
 
 ---
 
 ### Running the App
-
-In PowerShell (Windows):
-
-```bash
-$env:OLLAMA_HOST="0.0.0.0"
-ollama serve
-```
 
 In VM:
 

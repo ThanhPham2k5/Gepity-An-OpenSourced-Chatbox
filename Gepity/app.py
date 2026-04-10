@@ -4,6 +4,7 @@ from datetime import datetime
 import streamlit.components.v1 as components
 from utils import img_to_base64
 from core import RAG_engine
+import time
 
 
 # SETUP & SESSIONS -------------------------------------------------------
@@ -115,42 +116,62 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# CHAT HISTORY DISPLAY -------------------------------------------------------
-with st.container(height=356):
-    for msg in st.session_state.messages:
-        is_user = msg["role"] == 'user'
-        css_class = 'user_bubble' if is_user else 'ai_bubble'
-        avatar = user_bubble if is_user else ai_bubble
-        name = "Bạn" if is_user else "Gepity"
-        time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
 
-        st.markdown(f"""
-            <div class="bubble-header-{css_class}">
-                <img src="data:image/png;base64,{avatar}" alt="{avatar}.png" class="{css_class}-ico"/>
-                <div class="bubble-answer-{css_class}">
-                    <span class="bubble-name">{name}</span>
-                    <div class="{css_class}">
-                        {msg["content"]}
+# CHAT SECTION -------------------------------------------------------
+with st.container(height=480):
+    chat_placeholder = st.empty()
+    
+    def redraw_chats():
+        with chat_placeholder.container():
+            for msg in st.session_state.messages:
+                is_user = msg["role"] == 'user'
+                css_class = 'user_bubble' if is_user else 'ai_bubble'
+                avatar = user_bubble if is_user else ai_bubble
+                name = "Bạn" if is_user else "Gepity"
+                time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
+
+                st.markdown(f"""
+                    <div class="bubble-header-{css_class}">
+                        <img src="data:image/png;base64,{avatar}" class="{css_class}-ico"/>
+                        <div class="bubble-answer-{css_class}">
+                            <span class="bubble-name">{name}</span>
+                            <div class="{css_class}">{msg["content"]}</div>
+                            <span class="bubble-time">{time_str}</span>
+                        </div>
                     </div>
-                    <span class="bubble-time">{time_str}</span>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+
+    redraw_chats()
+        
+# store response into session -------------------------------------------------------
+if user_req != None:
+    st.session_state.messages.append({"role": "user", "content": user_req})
+
+    redraw_chats()
+
+    with st.spinner("Gepity đang suy nghĩ..."):
+        response = rag_query(user_req)
+        st.session_state.messages.append({"role": "ai", "content": response})
+
+    st.rerun()
 
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
-#upload file
-upload_file = st.file_uploader(
-    label="Upload tài liệu",
-    type=["pdf", "docx"],
-    help="Hỗ trợ PDF và DOCX",
-    label_visibility="collapsed",
-    accept_multiple_files=True
-)
+st.markdown('<div class="uploader-anchor"></div>', unsafe_allow_html=True)
 
-if upload_file:
-    file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
-    if st.session_state.get("last_file_key") != file_key:
-        st.session_state["last_file_key"] = file_key
+with st.popover("Đính kèm", use_container_width=False):
+    #upload file
+upload_file = st.file_uploader(
+        label="Upload tài liệu",
+        type=["pdf", "docx"],
+        help="Hỗ trợ PDF và DOCX",
+        label_visibility="collapsed",
+        accept_multiple_files=True
+    )
+
+    if upload_file:
+        file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
+        if st.session_state.get("last_file_key") != file_key:
+            st.session_state["last_file_key"] = file_key
 
         with st.spinner("Gepity đang xử lý tài liệu..."):
             retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(upload_file)
