@@ -1,47 +1,16 @@
 import streamlit as st
-from langchain_ollama import OllamaLLM
-import base64
 import os
 from datetime import datetime 
 import streamlit.components.v1 as components
-import tempfile
-
-from langchain_community.document_loaders import PDFPlumberLoader
-
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_core.prompts import PromptTemplate
+from utils import img_to_base64
+from core import RAG_engine
 
 
-# setup -------------------------------------------------------
+# SETUP & SESSIONS -------------------------------------------------------
 st.set_page_config(page_title="Gepity AI", layout="wide")
 
-llm = OllamaLLM(
-    # model="qwen2.5:7b",
-    model="qwen2.5:3b",
-    base_url="http://localhost:11434"
-)
-
-# insert css -------------------------------------------------------
-def load_css(file_path):
-    with open(file_path, "r") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
-load_css("style.css")
-
-# convert img to base64 -------------------------------------------------------
-def img_to_base64(path):
-    base_dir = os.path.dirname(__file__)
-    # print(f"{base_dir}")
-    full_path = os.path.join(base_dir, path)
-    # print(f"{full_path}")
-    with open(full_path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
-    
-trash_can = img_to_base64("assets/img/trash-can.png")
-section_ico = img_to_base64("assets/img/section-ico.png")
-
+if "rag" not in st.session_state:
+    st.session_state.rag = RAG_engine()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -52,93 +21,24 @@ if "retriever" not in st.session_state:
 if "vector_store" not in st.session_state:
     st.session_state.vector_store = None
 
-# embedder -------------------------------------------------------
-def get_embedder():
-    return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True}
-    )
+# LOAD CSS -------------------------------------------------------
+# Get the directory where app.py actually lives
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Build the full path to style.css
+css_path = os.path.join(current_dir, "style.css")
+def load_css(file_path):
+    with open(file_path, "r") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-embedder = get_embedder()
+load_css(css_path)
 
-# load document -------------------------------------------------------
-def load_document(uploaded_files: list):
+# PREPARE ASSETS -------------------------------------------------------
+trash_can = img_to_base64("assets/img/trash-can.png")
+section_ico = img_to_base64("assets/img/section-ico.png")
+user_bubble = img_to_base64("assets/img/user-ico.png")
+ai_bubble = img_to_base64("assets/img/ai-ico.png")
 
-    all_docs = []
-    for uploaded_file in uploaded_files:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-            tmp_file.write(uploaded_file.read())
-            tmp_file_path = tmp_file.name
-        
-        loader = PDFPlumberLoader(tmp_file_path)
-        docs = loader.load()
-        os.unlink(tmp_file_path)
-        all_docs.extend(docs)
-
-    # text splitter
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=100,
-    )
-
-    documents = text_splitter.split_documents(all_docs)
-
-    vector_store = FAISS.from_documents(documents, embedder)
-
-    retriever = vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": 3},
-    )
-
-    return retriever, vector_store, len(documents), len(all_docs)
-
-# ─── LANGUAGE DETECTION ─────────────────────────────────────────────────────────
-def is_vietnamese(text: str) -> bool:
-    vn_chars = "àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắặẳẵặẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ"
-    return any(c in text.lower() for c in vn_chars)
-
-# build prompt -------------------------------------------------------
-def build_prompt(context: str, user_input: str) -> str:
-    if is_vietnamese(user_input):
-        return f""" Sử dụng ngữ cảnh sau đây để trả lời câu hỏi.
-        Nếu bạn không biết, chỉ cần nói là bạn không biết.
-        Trả lời ngắn gọn (3-4 câu) BẮT BUỘC bằng tiếng Việt.
-        
-        Ngữ cảnh: {context}
-        
-        Câu hỏi: {user_input}
-        
-        Trả lời:"""
-    else:
-        return f"""Use the following context to answer the question.
-        If you don't know the answer, just say you don't know.
-        Keep answer concise (3-4 sentences).
-        
-        Context: {context}
-        
-        Question: {user_input}
-        
-        Answer:"""
-
-
-def rag_query(user_input: str) -> str:
-    retriever = st.session_state.retriever
-    if retriever is None:
-        return llm.invoke(user_input)
-    # query embedding + similarity search
-    relevant_docs = retriever.invoke(user_input)
-    # Context building
-    context = "\n\n".join([doc.page_content for doc in relevant_docs])
-
-    # build prompt
-    prompt = build_prompt(context, user_input)
-
-    # llm response
-    response = llm.invoke(prompt)
-
-    return response
-# sidebar section -------------------------------------------------------
+# SIDEBAR SECTION -------------------------------------------------------
 with st.sidebar:
     st.markdown(f"""
         <div class="logo">
@@ -201,7 +101,7 @@ with st.sidebar:
         </button>
     """, unsafe_allow_html=True)
 
-# header section -------------------------------------------------------
+# HEADER SECTION -------------------------------------------------------
 st.markdown(f"""
     <div class="main-header">
         <div class="header-left">
@@ -215,22 +115,7 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# get request from user -------------------------------------------------------
-user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
-
-# store response into session -------------------------------------------------------
-if user_req != None:
-    st.session_state.messages.append({"role": "user", "content": user_req})
-
-    with st.spinner("Gepity đang suy nghĩ..."):
-        response = rag_query(user_req)
-
-    st.session_state.messages.append({"role": "ai", "content": response})
-
-# response (entire history) -------------------------------------------------------
-user_bubble = img_to_base64("assets/img/user-ico.png")
-ai_bubble = img_to_base64("assets/img/ai-ico.png")
-
+# CHAT HISTORY DISPLAY -------------------------------------------------------
 with st.container(height=356):
     for msg in st.session_state.messages:
         is_user = msg["role"] == 'user'
@@ -252,7 +137,8 @@ with st.container(height=356):
             </div>
         """, unsafe_allow_html=True)
 
-# uploader file -------------------------------------------------------
+# UPLOAD FILE & USER INPUT -------------------------------------------------------
+#upload file
 upload_file = st.file_uploader(
     label="Upload tài liệu",
     type=["pdf", "docx"],
@@ -267,14 +153,33 @@ if upload_file:
         st.session_state["last_file_key"] = file_key
 
         with st.spinner("Gepity đang xử lý tài liệu..."):
-            retriever, vector_store, num_chunks, num_docs = load_document(upload_file)
+            retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(upload_file)
             st.session_state.retriever = retriever
             st.session_state.vector_store = vector_store
         
         st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
 
-# javascript -------------------------------------------------------
-if st.session_state.messages:
+# user input
+user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
+
+# store response into session
+if user_req != None:
+    # add user request to session
+    st.session_state.messages.append({"role": "user", "content": user_req})
+
+    # get response from llm with loading spinner
+    with st.spinner("Gepity đang suy nghĩ..."):
+        response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
+
+    # add llm's response to session
+    st.session_state.messages.append({"role": "ai", "content": response})
+
+    st.rerun()
+
+
+# JAVASCRIPT AUTO-SCROLL -------------------------------------------------------
+# only run js when there is message in session, to avoid scroll to bottom when user first open the page
+if st.session_state.messages: 
     components.html(f"""
     <script>
         {len(st.session_state.messages)} //new mess -> +1 len -> re-render
