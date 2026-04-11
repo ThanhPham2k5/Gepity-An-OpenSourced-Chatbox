@@ -1,7 +1,7 @@
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import OllamaLLM
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from utils import is_vietnamese
 
 
