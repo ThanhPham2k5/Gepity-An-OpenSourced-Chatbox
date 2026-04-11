@@ -1,9 +1,10 @@
+from sqlalchemy import all_
 import streamlit as st
 import os
 from datetime import datetime 
 import streamlit.components.v1 as components
 from utils import img_to_base64
-from core import RAG_engine
+from core import RAG_engine, Graph_engine
 
 
 # SETUP & SESSIONS -------------------------------------------------------
@@ -11,6 +12,9 @@ st.set_page_config(page_title="Gepity AI", layout="wide")
 
 if "rag" not in st.session_state:
     st.session_state.rag = RAG_engine()
+
+if "graph_engine" not in st.session_state:
+    st.session_state.graph_engine = Graph_engine()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -161,7 +165,14 @@ with st.popover("Đính kèm", use_container_width=False):
             st.session_state["last_file_key"] = file_key
 
         with st.spinner("Gepity đang xử lý tài liệu..."):
+            # basic RAG processing
             retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(upload_file)
+
+            # graph RAG processing and sync to graph database
+            with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
+                all_chunks = st.session_state.graph_engine.process_document(upload_file)
+                nodes_count = st.session_state.graph_engine.sync_to_graph(all_chunks)
+                st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số nodes: {nodes_count}")
             st.session_state.retriever = retriever
             st.session_state.vector_store = vector_store
         

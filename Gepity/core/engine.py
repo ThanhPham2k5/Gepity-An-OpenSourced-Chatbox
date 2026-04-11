@@ -1,8 +1,14 @@
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_ollama import OllamaLLM
+from langchain_ollama import ChatOllama, OllamaLLM
+from regex import D
+from streamlit import status
+from sympy import im
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
 from langchain_community.vectorstores import FAISS
 from utils import is_vietnamese
+from database import get_graph_connection
+from langchain_experimental.graph_transformers import LLMGraphTransformer
+import streamlit as st
 
 
 class RAG_engine:
@@ -72,4 +78,67 @@ class RAG_engine:
             Question: {user_input}
             
             Answer:"""
+
+class Graph_engine:
+    def __init__(self, model_name="qwen2.5:3b"):
+        self.graph_extracting_llm = ChatOllama(
+            model=model_name, 
+            temperature=0,
+            num_ctx=4096,
+            format="json",
+        )
+        self.graph = get_graph_connection()
+
+        # Configure transformer
+        self.transformer = LLMGraphTransformer(
+            llm=self.graph_extracting_llm,
+            # allowed_nodes=["Concept", "Entity", "Technology", "Person", "Organization", "Location", "Event"],
+            # allowed_relationships=["RELATED_TO", "USES", "PART_OF", "LOCATED_IN", "WORKS_FOR", "KNOWS", "ABOUT", "CAUSES", "HAS_PROPERTY"]
+        )
+
+    def process_document(self, uploaded_files):
+        # read files and extract text
+        all_docs = get_docs_from_uploaded_files(uploaded_files)
+
+        # split documents into chunks
+        all_chunks = split_docs_into_chunks(all_docs, chunk_size=800, chunk_overlap=100) 
+
+        return all_chunks
+
+    def sync_to_graph(self, all_chunks):
+        if not self.graph:
+            self.graph = get_graph_connection()
+        
+        if not self.graph:
+            st.error("Không thể kết nối đến Neo4j sau nhiều lần thử. Vui lòng kiểm tra console.")
+            return 0
+        
+        total_chunks = len(all_chunks)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        batch_size = 2 # chunks per batch, adjust based on performance
+        successful_docs = 0
+        for i in range(0, total_chunks, batch_size):
+            batch = all_chunks[i : i + batch_size]
+            status_text.text(f"Đang phân tích Graph: {i}/{total_chunks} đoạn văn...")
+            try:
+                #extract entity and relationship from batch, then sync to graph
+                graph_docs = self.transformer.convert_to_graph_documents(batch)
+          
+                self.graph.add_graph_documents(
+                    graph_docs, 
+                    baseEntityLabel=True, 
+                    include_source=True
+                )
+                successful_docs += len(batch)
+            except Exception as e:
+                # if error occurs, skip the batch and continue with next one
+                st.warning(f"Bỏ qua batch {i} do lỗi xử lý: {e}")
+            
+            # Update progress bar
+            progress_bar.progress(min((i + batch_size) / total_chunks, 1.0))
+
+        status_text.text("Successfully built Knowledge Graph!")
+        return successful_docs
     
