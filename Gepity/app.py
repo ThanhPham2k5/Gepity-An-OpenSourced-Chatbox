@@ -167,6 +167,7 @@ with st.popover("Đính kèm", use_container_width=False):
         with st.spinner("Gepity đang xử lý tài liệu..."):
             # basic RAG processing
             retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(upload_file)
+            st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
 
             # graph RAG processing and sync to graph database
             with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
@@ -175,8 +176,6 @@ with st.popover("Đính kèm", use_container_width=False):
                 st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số nodes: {nodes_count}")
             st.session_state.retriever = retriever
             st.session_state.vector_store = vector_store
-        
-        st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
 
 # user input
 user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
