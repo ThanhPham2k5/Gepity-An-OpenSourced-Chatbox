@@ -210,7 +210,7 @@ div[data-testid="stFileUploader"] button {
   color: #212529 !important;
   border: none !important;
   font-weight: 600 !important;
-  border-radius: 8px !important;
+  padding: 8px !important;
 }
 
 div[data-testid="stFileUploaderDropzone"] {
@@ -321,4 +321,43 @@ div[data-testid="stPopover"] {
   bottom: 26px !important;
   z-index: 999999 !important;
   height: 40px;
+}
+
+div[data-testid="stFileUploaderDeleteBtn"] {
+  width: 40px !important;
+  height: 40px !important;
+}
+
+/* Đường kẻ phân cách giữa câu trả lời và phần nguồn */
+.source-divider {
+  border-top: 1px dashed #dee2e6;
+  margin: 15px 0 10px 0;
+}
+
+div[data-testid="stExpander"] {
+  border: none !important;
+  background-color: #f8f9fa !important;
+  border-radius: 8px !important;
+}
+
+div[data-testid="stExpander"] summary {
+  padding: 10px 15px !important;
+  color: #007bff !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+}
+
+div[data-testid="stExpander"] summary p {
+  color: #007bff !important;
+}
+
+/* Định dạng đoạn highlight (Blockquote) của tài liệu gốc */
+div[data-testid="stExpanderDetails"] blockquote {
+  border-left: 4px solid #ffc107 !important;
+  background-color: #ffffff;
+  padding: 10px 15px;
+  margin-bottom: 15px;
+  font-size: 0.85rem;
+  color: #495057;
+  border-radius: 0 4px 4px 0;
 }

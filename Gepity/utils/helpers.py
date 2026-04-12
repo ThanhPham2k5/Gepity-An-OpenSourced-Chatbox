@@ -38,6 +38,9 @@ def update_current_chat_to_history():
                 if chat['id'] == st.session_state.current_chat_id:
                     chat['messages'] = st.session_state.messages.copy()
                     chat['title'] = title
+                    chat['retriever'] = st.session_state.get('retriever')
+                    chat['vector_store'] = st.session_state.get('vector_store')
+                    chat['last_file_key'] = st.session_state.get('last_file_key')
                     break
         # TRƯỜNG HỢP 2: Đang chat ở "Cuộc trò chuyện mới" chưa có ID -> Tạo mới vào lịch sử
         else:
@@ -45,7 +48,10 @@ def update_current_chat_to_history():
             new_item = {
                 "id": new_id,
                 "title": title,
-                "messages": st.session_state.messages.copy()
+                "messages": st.session_state.messages.copy(),
+                "retriever": st.session_state.get('retriever'),
+                "vector_store": st.session_state.get('vector_store'),
+                "last_file_key": st.session_state.get('last_file_key')
             }
             st.session_state.chat_history.insert(0, new_item)
             st.session_state.current_chat_id = new_id

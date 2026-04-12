@@ -62,6 +62,11 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.current_chat_id = None
         st.session_state.retriever = None
+        st.session_state.vector_store = None
+        if "last_file_key" in st.session_state:
+            del st.session_state["last_file_key"]
+        if "file_stats" in st.session_state:
+            del st.session_state["file_stats"]
         st.rerun()
 
     st.markdown('<div class="sections-title">LỊCH SỬ TRÒ CHUYỆN</div>', unsafe_allow_html=True)
@@ -73,7 +78,11 @@ with st.sidebar:
                 st.session_state.messages = chat['messages'].copy()
                 st.session_state.current_chat_id = chat['id']
                 st.session_state.retriever = chat.get('retriever')
-                
+                st.session_state.vector_store = chat.get('vector_store')
+                st.session_state['last_file_key'] = chat.get('last_file_key')
+                if "file_stats" in st.session_state:
+                    del st.session_state["file_stats"]
+
                 st.rerun()
 
     # Section: Hướng dẫn
@@ -151,27 +160,27 @@ with chat_container:
                 </div>
             </div>
         """, unsafe_allow_html=True)
+
+        # --- THÊM PHẦN HIỂN THỊ NGUỒN TRÍCH DẪN  ---
+        if not is_user and msg.get("sources"):
+            st.markdown('<div class="source-divider"></div>', unsafe_allow_html=True)
+            with st.expander("📚 Xem nguồn trích dẫn"):
+                for i, doc in enumerate(msg["sources"]):
+                    page_num = doc.metadata.get('page', 'N/A')
+                    if isinstance(page_num, int):
+                        page_num += 1 
+                        
+                    st.markdown(f"**Nguồn {i+1} (Trang {page_num}):**")
+                    st.markdown(f"> {doc.page_content}")
+
+        st.markdown("</div></div>", unsafe_allow_html=True)
         
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
-
 # user input
 user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
 
-# store response into session
-if user_req:
-    # add user request to session
-    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
-
-    # redraw_chats()
-
-    # get response from llm with loading spinner
-    with st.spinner("Gepity đang suy nghĩ..."):
-        response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
-        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-        st.session_state.messages.append({"role": "ai", "content": response, "time": ai_time}) # add llm's response to session
-
-    st.rerun()
+# Tạo Key động để Streamlit tự động "rửa sạch" ô upload khi đổi Chat
+uploader_key = f"uploader_{st.session_state.current_chat_id}"
 
 # upload file
 st.markdown('<div class="chat-input-container-anchor"></div>', unsafe_allow_html=True)
@@ -180,22 +189,33 @@ with st.popover("Đính kèm file", use_container_width=False):
         "Upload tài liệu",
         type=["pdf", "docx"],
         label_visibility="collapsed",
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key=uploader_key
     )
 
     if upload_file:
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
         if st.session_state.get("last_file_key") != file_key:
-            st.session_state["last_file_key"] = file_key
+            with st.spinner("Gepity đang xử lý tài liệu..."):
+                retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(upload_file)
+                st.session_state.retriever = retriever
+                st.session_state.vector_store = vector_store
+                st.session_state["last_file_key"] = file_key
+                st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}"
+            st.rerun()
+    else:
+        if st.session_state.get("last_file_key"):
+            st.session_state.retriever = None
+            st.session_state.vector_store = None
+            del st.session_state["last_file_key"]
+            if "file_stats" in st.session_state:
+                del st.session_state["file_stats"]
+                
+            st.rerun()
 
-        with st.spinner("Gepity đang xử lý tài liệu..."):
-            retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(upload_file)
-            st.session_state.retriever = retriever
-            st.session_state.vector_store = vector_store
-        
-        st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
-    st.markdown('</div>', unsafe_allow_html=True)
-
+    if "file_stats" in st.session_state:
+        st.success(st.session_state["file_stats"])
+st.markdown('</div>', unsafe_allow_html=True)
 
 # JAVASCRIPT AUTO-SCROLL -------------------------------------------------------
 # only run js when there is message in session, to avoid scroll to bottom when user first open the page
@@ -217,3 +237,18 @@ if st.session_state.messages:
         }}, 300);
     </script>
     """, height=0)
+
+if user_req:
+    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
+    with st.spinner("Gepity đang suy nghĩ..."):
+        response, sources = st.session_state.rag.get_response(user_req, st.session_state.retriever)
+        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+        st.session_state.messages.append({
+            "role": "ai", 
+            "content": response, 
+            "time": ai_time,
+            "sources": sources
+        })
+
+    st.rerun()

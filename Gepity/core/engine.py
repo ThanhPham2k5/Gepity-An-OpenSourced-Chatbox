@@ -35,7 +35,7 @@ class RAG_engine:
     def get_response(self, user_input, retriever):
         # if no document uploaded, llm will answer directly
         if retriever is None:
-            return self.llm.invoke(user_input)
+            return self.llm.invoke(user_input), None
 
         # retrieve relevant documents based on user input
         relevant_docs = retriever.invoke(user_input)
@@ -49,7 +49,7 @@ class RAG_engine:
         # llm response
         response = self.llm.invoke(prompt)
 
-        return response
+        return response,relevant_docs
     
     def build_prompt(self, context: str, user_input: str) -> str:
         if is_vietnamese(user_input): # if user input is in Vietnamese, response in Vietnamese
