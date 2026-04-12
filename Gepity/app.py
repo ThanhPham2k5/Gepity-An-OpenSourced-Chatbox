@@ -171,9 +171,21 @@ if user_req:
 
     # get response from llm with loading spinner
     with st.spinner("Gepity đang suy nghĩ..."):
-        response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
+        # basic RAG response
+        basic_response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
+
+        # graph RAG response
+        # graph_response = st.session_state.graph_engine.get_response(user_req)
+
         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-        st.session_state.messages.append({"role": "ai", "content": response, "time": ai_time}) # add llm's response to session
+
+        # add llm's response to session
+        st.session_state.messages.append({
+            "role": "ai", 
+            "content": basic_response, 
+            # "content": graph_response,
+            "time": ai_time
+        }) 
 
     st.rerun()
 
@@ -198,43 +210,43 @@ with st.popover("Đính kèm file", use_container_width=False):
                 st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
 
                 # graph RAG processing and sync to graph database
-                with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
-                    all_chunks = st.session_state.graph_engine.process_document(upload_file)
-                    nodes_count = st.session_state.graph_engine.sync_to_graph(all_chunks)
-                    st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số nodes: {nodes_count}")
+                # with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
+                #     all_chunks = st.session_state.graph_engine.process_document(upload_file)
+                #     nodes_count = st.session_state.graph_engine.sync_to_graph(all_chunks)
+                #     st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số nodes: {nodes_count}")
                 st.session_state.retriever = retriever
                 st.session_state.vector_store = vector_store
 
-# user input
-user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
+# # user input
+# user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
 
-# store response into session
-if user_req:
-    # add user request to session
-    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
+# # store response into session
+# if user_req:
+#     # add user request to session
+#     current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+#     st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
 
-    redraw_chats()
+#     # redraw_chats()
 
-    # get response from llm with loading spinner
-    with st.spinner("Gepity đang suy nghĩ..."):
-        # basic RAG response
-        basic_response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
+#     # get response from llm with loading spinner
+#     with st.spinner("Gepity đang suy nghĩ..."):
+#         # basic RAG response
+#         basic_response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
 
-        # graph RAG response
-        graph_response = st.session_state.graph_engine.get_response(user_req)
+#         # graph RAG response
+#         graph_response = st.session_state.graph_engine.get_response(user_req)
 
-        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+#         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
 
-        # add llm's response to session
-        st.session_state.messages.append({
-            "role": "ai", 
-            "basic_content": basic_response, 
-            "content": graph_response,
-            "time": ai_time
-        }) 
+#         # add llm's response to session
+#         st.session_state.messages.append({
+#             "role": "ai", 
+#             "basic_content": basic_response, 
+#             "content": graph_response,
+#             "time": ai_time
+#         }) 
 
-    st.rerun()
+#     st.rerun()
 
 
 # JAVASCRIPT AUTO-SCROLL -------------------------------------------------------

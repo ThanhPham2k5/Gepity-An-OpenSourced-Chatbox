@@ -10,7 +10,7 @@ import streamlit as st
 
 
 class RAG_engine:
-    def __init__(self, model_name="qwen2.5:7b"):
+    def __init__(self, model_name="qwen2.5:3b"):
         self.llm = OllamaLLM(model=model_name, base_url="http://localhost:11434")
         self.embedder = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
@@ -211,8 +211,8 @@ class Graph_engine:
         WHERE n.id IN $entity_ids 
            OR n.id CONTAINS $query_upper 
            OR n.id CONTAINS $query_title
-        RETURN n.id AS source, type(r) AS rel, m.id AS target
-        LIMIT 15
+        RETURN n.id AS source, type(r) AS rel, m.id AS target, n.description AS desc
+        LIMIT 10
         """
         
         query_upper = user_input.upper()
@@ -226,8 +226,11 @@ class Graph_engine:
 
         for record in results:
             relation_str = f"{record['source']} --[{record['rel']}]--> {record['target']}"
-            if record['desc']:
-                relation_str += f" ({record['desc']})"
+            
+            description = record.get('desc') 
+            if description:
+                relation_str += f" ({description})"
+                
             graph_context_list.append(relation_str)
 
         # join all relationships into a single string as graph context for response generation
@@ -240,6 +243,7 @@ class Graph_engine:
                 return f"""Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided."""
         
         # build prompt with graph context and user input
+        print(f"DEBUG: Context length: {len(graph_context)} characters")
         prompt = self.build_response_prompt(user_input, context=graph_context)
         response = self.response_llm.invoke(prompt)
 
@@ -250,7 +254,7 @@ class Graph_engine:
         # build prompt with graph context and user input
         if is_vietnamese(user_input):
             return f"""Dựa trên input của người dùng, hãy sử dụng các mối quan hệ thực thể dưới đây (được trích xuất từ Knowledge Graph) để trả lời câu hỏi. 
-            Nếu thông tin dưới đây không có câu trả lời, hãy dựa vào kiến thức của bạn nhưng ưu tiên dữ liệu từ Graph.
+            Nếu thông tin dưới đây không có câu trả lời, hãy dựa vào kiến thức của bạn nhưng hãy thông báo trước nếu bạn làm vậy.
 
             Các mối quan hệ thực thể:
             {context}
@@ -260,7 +264,7 @@ class Graph_engine:
             Trả lời BẮT BUỘC bằng tiếng Việt (ngắn gọn, tập trung vào mối quan hệ giữa các thực thể):"""
         else: 
             return f"""Based on user input, use the entity relationships listed below (extracted from a knowledege graph) to answer the question.
-            If the provided information does not have an answer, please use your availabled knowledge but remember to prioritize the graph's data.
+            If the provided information does not have an answer, then use your availabled knowledge but you must notify when you do.
             
             Entity relationships:
             {context}
