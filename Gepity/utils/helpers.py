@@ -1,5 +1,7 @@
 import os
 import base64
+import streamlit as st
+from datetime import datetime 
 
 def img_to_base64(path):
     # get current directory of this file
@@ -21,3 +23,29 @@ def img_to_base64(path):
 def is_vietnamese(text: str) -> bool:
     vn_chars = "àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắặẳẵặẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ"
     return any(c in text.lower() for c in vn_chars)
+
+
+def update_current_chat_to_history():
+    # Nếu đang có tin nhắn trên màn hình
+    if st.session_state.messages:
+        # Tìm tiêu đề
+        first_q = st.session_state.messages[0]['content']
+        title = (first_q[:20] + '...') if len(first_q) > 20 else first_q
+        
+        # TRƯỜNG HỢP 1: Đang ở một cuộc trò chuyện cũ (đã có ID) -> Cập nhật lại nó
+        if st.session_state.current_chat_id:
+            for chat in st.session_state.chat_history:
+                if chat['id'] == st.session_state.current_chat_id:
+                    chat['messages'] = st.session_state.messages.copy()
+                    chat['title'] = title
+                    break
+        # TRƯỜNG HỢP 2: Đang chat ở "Cuộc trò chuyện mới" chưa có ID -> Tạo mới vào lịch sử
+        else:
+            new_id = datetime.now().strftime("%Y%m%d%H%M%S")
+            new_item = {
+                "id": new_id,
+                "title": title,
+                "messages": st.session_state.messages.copy()
+            }
+            st.session_state.chat_history.insert(0, new_item)
+            st.session_state.current_chat_id = new_id

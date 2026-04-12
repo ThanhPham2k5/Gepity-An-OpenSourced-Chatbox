@@ -2,7 +2,7 @@ import streamlit as st
 import os
 from datetime import datetime 
 import streamlit.components.v1 as components
-from utils import img_to_base64
+from utils.helpers import img_to_base64, update_current_chat_to_history
 from core import RAG_engine
 
 
@@ -21,11 +21,17 @@ if "retriever" not in st.session_state:
 if "vector_store" not in st.session_state:
     st.session_state.vector_store = None
 
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+if "current_chat_id" not in st.session_state:
+    st.session_state.current_chat_id = None
+
 # LOAD CSS -------------------------------------------------------
 # Get the directory where app.py actually lives
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# Build the full path to style.css
-css_path = os.path.join(current_dir, "style.css")
+# Build the full path to demo.css
+css_path = os.path.join(current_dir, "demo.css")
 def load_css(file_path):
     with open(file_path, "r") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
@@ -40,65 +46,75 @@ ai_bubble = img_to_base64("assets/img/ai-ico.png")
 
 # SIDEBAR SECTION -------------------------------------------------------
 with st.sidebar:
-    st.markdown(f"""
-        <div class="logo">
-            <div class="logo-ico">G</div>
+    # Header & Logo
+    st.markdown("""
+        <div class="logo-container">
+            <div class="logo-box">G</div>
             <div class="logo-text">Gepity</div>
         </div>
-        <div class="logo-info">AI Document Q&A System</div>
-        <div class="line"></div>
-        <button class="sidebar-button"><div>+</div>Cuộc trò chuyện mới</button>
-
-        <div class="sections">
-            <div class="sections-title">LỊCH SỬ TRÒ CHUYỆN</div>
-            <div class="sections-list">
-                <div class="sections-item sections-item-selected">
-                    <img src="data:image/png;base64,{section_ico}" alt="section-ico.png" class="sections-ico" />
-                    <span class="section-text">Phân tích báo cáo tài chính</span>
-                </div>
-                <div class="sections-item">
-                    <img src="data:image/png;base64,{section_ico}" alt="section-ico.png" class="sections-ico" />
-                    <span class="section-text">Hỏi về hợp đồng lao động</span>
-                </div>
-                <div class="sections-item">
-                    <img src="data:image/png;base64,{section_ico}" alt="section-ico.png" class="sections-ico" />
-                    <span class="section-text">Tóm tắt luận văn tốt nghiệp</span>
-                </div>
-                <div class="sections-item">
-                    <img src="data:image/png;base64,{section_ico}" alt="section-ico.png" class="sections-ico" />
-                    <span class="section-text">Đề cương môn học OSSD abcdefghijklmnopqrstwxyz</span>
-                </div>
-            </div>
-        </div>
+        <div class="logo-sub">AI Document Q&A System</div>
+    """, unsafe_allow_html=True)
+    
+    # Action Button
+    if st.button("+ Cuộc trò chuyện mới", type="primary"):
+        update_current_chat_to_history()
         
-        <div class="intructions">
-            <div class="intructions-title">HƯỚNG DẪN SỬ DỤNG</div>
-            <div class="intructions-item"><div class="item-order">1</div>Upload file PDF hoặc DOCX cần hỏi</div>
-            <div class="intructions-item"><div class="item-order">2</div>Chờ hệ thống xử lý tài liệu</div>
-            <div class="intructions-item"><div class="item-order">3</div>Nhập câu hỏi về nội dung tài liệu</div>
-            <div class="intructions-item"><div class="item-order">4</div>Xem câu trả lời và tiếp tục hỏi</div>
+        st.session_state.messages = []
+        st.session_state.current_chat_id = None
+        st.session_state.retriever = None
+        st.rerun()
+
+    st.markdown('<div class="sections-title">LỊCH SỬ TRÒ CHUYỆN</div>', unsafe_allow_html=True)
+    with st.container(border=False):
+        for chat in st.session_state.chat_history:
+            if st.button(chat['title'], key=f"hist_{chat['id']}", use_container_width=True, type="secondary"):
+                update_current_chat_to_history()
+                
+                st.session_state.messages = chat['messages'].copy()
+                st.session_state.current_chat_id = chat['id']
+                st.session_state.retriever = chat.get('retriever')
+                
+                st.rerun()
+
+    # Section: Hướng dẫn
+    st.markdown('<div class="sidebar-label">Hướng dẫn sử dụng</div>', unsafe_allow_html=True)
+    st.markdown("""
+        <div class="step-item">
+            <div class="step-num">1</div>
+            <div>Upload file PDF hoặc DOCX cần hỏi</div>
         </div>
-        <div class="line"></div>
-        <div class="model">
-            <div class="model-title">CẤU HÌNH MODEL</div>
-            <div class="model-item"><div class="model-title model-item-title">Model đang dùng</div>qwen2.5:7b</div>
-            <div class="model-item">
-                <div class="model-title model-item-title">
-                    Trạng thái
-                </div>
-                <div class="model-online">
-                    <div class="model-online-ico"></div>
-                    <div class="model-online-text">Online</div>
-                </div>
+        <div class="step-item">
+            <div class="step-num">2</div>
+            <div>Chờ hệ thống xử lý tài liệu</div>
+        </div>
+        <div class="step-item">
+            <div class="step-num">3</div>
+            <div>Nhập câu hỏi về nội dung tài liệu</div>
+        </div>
+        <div class="step-item">
+            <div class="step-num">4</div>
+            <div>Xem câu trả lời và tiếp tục hỏi</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Section: Cấu hình Model
+    st.markdown('<div class="sidebar-label">Cấu hình hệ thống</div>', unsafe_allow_html=True)
+    st.markdown("""
+        <div class="config-card">
+            <div class="config-key">Mô hình đang dùng</div>
+            <div class="config-val">qwen2.5:7b</div>
+            <div class="status-online">
+                <div class="dot"></div> Online
             </div>
-            <div class="model-item"><div class="model-title model-item-title">Embedding</div>multilingual-mpnet</div>
-            <div class="model-item"><div class="model-title model-item-title">Vector Store</div>FAISS</div>
         </div>
-        <div class="line"></div>
-        <button class="sidebar-delete">
-            <img src="data:image/png;base64,{trash_can}" alt="delete-ico.png" class="sidebar-delete-ico" />
-            Xóa lịch sử chat
-        </button>
+        <div class="config-card">
+            <div class="config-key">Embedding Model</div>
+            <div class="config-val">multilingual-mpnet</div>
+        </div>
+        <div class="config-card">
+            <div class="config-key">Vector Database</div>
+            <div class="config-val">FAISS</div>
+        </div>
     """, unsafe_allow_html=True)
 
 # HEADER SECTION -------------------------------------------------------
@@ -109,48 +125,60 @@ st.markdown(f"""
             <div class="header-left-sub">Hỏi đáp thông minh từ tài liệu của bạn</div>
         </div>
         <div class="header-right">
-            <div class="header-right-circle"></div>
-            <div class="header-right-text">qwen2.5:7b</div>
+            <div class="header-status-dot"></div>
+            <div class="header-status-text">qwen2.5:7b</div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
 
 # CHAT SECTION -------------------------------------------------------
-with st.container(height=480):
-    chat_placeholder = st.empty()
-    
-    def redraw_chats():
-        with chat_placeholder.container():
-            for msg in st.session_state.messages:
-                is_user = msg["role"] == 'user'
-                css_class = 'user_bubble' if is_user else 'ai_bubble'
-                avatar = user_bubble if is_user else ai_bubble
-                name = "Bạn" if is_user else "Gepity"
-                time_str = msg.get("time", datetime.now().strftime("%H:%M · %d/%m/%Y")) # use current time if not provided
-
-                st.markdown(f"""
-                    <div class="bubble-header-{css_class}">
-                        <img src="data:image/png;base64,{avatar}" class="{css_class}-ico"/>
-                        <div class="bubble-answer-{css_class}">
-                            <span class="bubble-name">{name}</span>
-                            <div class="{css_class}">{msg["content"]}</div>
-                            <span class="bubble-time">{time_str}</span>
-                        </div>
+chat_container = st.container()
+with chat_container:
+    for msg in st.session_state.messages:
+        is_user = msg["role"] == "user"
+        bubble_class = "user-bubble" if is_user else "ai-bubble"
+        name = "Bạn" if is_user else "Gepity"
+        
+        st.markdown(f"""
+            <div class="chat-row {bubble_class}-row">
+                <div class="chat-bubble {bubble_class}">
+                    <div class="bubble-info">
+                        <span class="bubble-name">{name}</span>
+                        <span class="bubble-time">{msg.get('time', '')}</span>
                     </div>
-                """, unsafe_allow_html=True)
-
-    redraw_chats()
+                    <div class="bubble-content">{msg['content']}</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
-st.markdown('<div class="uploader-anchor"></div>', unsafe_allow_html=True)
 
-with st.popover("Đính kèm", use_container_width=False):
-    #upload file
+# user input
+user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
+
+# store response into session
+if user_req:
+    # add user request to session
+    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
+
+    # redraw_chats()
+
+    # get response from llm with loading spinner
+    with st.spinner("Gepity đang suy nghĩ..."):
+        response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
+        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+        st.session_state.messages.append({"role": "ai", "content": response, "time": ai_time}) # add llm's response to session
+
+    st.rerun()
+
+# upload file
+st.markdown('<div class="chat-input-container-anchor"></div>', unsafe_allow_html=True)
+with st.popover("Đính kèm file", use_container_width=False):
     upload_file = st.file_uploader(
-        label="Upload tài liệu",
+        "Upload tài liệu",
         type=["pdf", "docx"],
-        help="Hỗ trợ PDF và DOCX",
         label_visibility="collapsed",
         accept_multiple_files=True
     )
@@ -166,25 +194,7 @@ with st.popover("Đính kèm", use_container_width=False):
             st.session_state.vector_store = vector_store
         
         st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
-
-# user input
-user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
-
-# store response into session
-if user_req:
-    # add user request to session
-    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
-
-    redraw_chats()
-
-    # get response from llm with loading spinner
-    with st.spinner("Gepity đang suy nghĩ..."):
-        response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
-        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-        st.session_state.messages.append({"role": "ai", "content": response, "time": ai_time}) # add llm's response to session
-
-    st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # JAVASCRIPT AUTO-SCROLL -------------------------------------------------------

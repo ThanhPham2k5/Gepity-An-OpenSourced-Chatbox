@@ -6,7 +6,7 @@ from utils import is_vietnamese
 
 
 class RAG_engine:
-    def __init__(self, model_name="qwen2.5:3b"):
+    def __init__(self, model_name="qwen2.5:7b"):
         self.llm = OllamaLLM(model=model_name, base_url="http://localhost:11434")
         self.embedder = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
