@@ -1,16 +1,11 @@
-from unittest import result
-
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama, OllamaLLM
-from numpy import extract
-from regex import D
-from streamlit import status
-from sympy import N, im
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
 from langchain_community.vectorstores import FAISS
 from utils import is_vietnamese
-from database import get_graph_connection
+from database import get_graph_connection, get_vector_from_database
 from langchain_experimental.graph_transformers import LLMGraphTransformer
+from langchain_core.prompts import ChatPromptTemplate
 import streamlit as st
 
 
@@ -100,17 +95,55 @@ class Graph_engine:
 
         self.graph = get_graph_connection()
 
+
+        graph_prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                """Bạn là một chuyên gia về Knowledge Graph. Nhiệm vụ của bạn là trích xuất các thực thể và mối quan hệ từ văn bản được cung cấp theo các nguyên tắc sau:
+
+                1. THỰC THỂ (ENTITIES): 
+                - Sử dụng danh từ cụ thể, ngắn gọn. 
+                - Label của thực thể phải là một từ đơn mô tả loại (ví dụ: 'Technology', 'Concept', 'Component', 'Person').
+
+                2. MỐI QUAN HỆ (RELATIONSHIPS):
+                - Sử dụng động từ viết hoa, nối bằng dấu gạch dưới (ví dụ: 'SỬ_DỤNG', 'THUỘC_VỀ').
+
+                3. TÍNH ĐỒNG NHẤT:
+                - Quy về một tên gọi chuẩn nhất cho các thực thể trùng lặp.
+                - Luôn trích xuất thuộc tính 'description' nếu có.
+
+                4. ĐỊNH DẠNG: Trả về kết quả dưới dạng đồ thị Nodes và Edges."""
+            ),
+            (
+                "human",
+                "Hãy trích xuất thực thể và quan hệ từ đoạn văn bản sau: {input}"
+            ),
+        ])
+
         # Configure transformer
         self.transformer = LLMGraphTransformer(
             llm=self.extract_llm,
-            # remove allowed_nodes and allowed_relationships to let llm extract any entity and relationship it finds in the text, which is more flexible and suitable for general documents
-            # allowed_nodes=["Concept", "Entity", "Technology", "Person", "Organization", "Location", "Event"],
-            # allowed_relationships=["RELATED_TO", "USES", "PART_OF", "LOCATED_IN", "WORKS_FOR", "KNOWS", "ABOUT", "CAUSES", "HAS_PROPERTY"]
+            node_properties=["description"],
+            prompt= graph_prompt,
         )
+
+        self.embedder = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True}
+        )
+
+        self.vector_node = get_vector_from_database(embedder=self.embedder)
 
     def process_document(self, uploaded_files):
         # read files and extract text
         all_docs = get_docs_from_uploaded_files(uploaded_files)
+
+        # Bổ sung logic: Ghi đè hoặc thêm thông tin file_name vào metadata
+        for doc in all_docs:
+            # Lấy tên file từ file_path hoặc thuộc tính có sẵn
+            actual_file_name = doc.metadata.get("source", "Unknown_File").split("/")[-1]
+            doc.metadata["file_name"] = actual_file_name
 
         # split documents into chunks
         all_chunks = split_docs_into_chunks(all_docs, chunk_size=800, chunk_overlap=100) 
@@ -137,6 +170,8 @@ class Graph_engine:
             try:
                 #extract entity and relationship from batch, then sync to graph
                 graph_docs = self.transformer.convert_to_graph_documents(batch)
+
+                graph_docs = self.clean_graph_documents(graph_docs)
           
                 self.graph.add_graph_documents(
                     graph_docs, 
@@ -151,75 +186,67 @@ class Graph_engine:
             # Update progress bar
             progress_bar.progress(min((i + batch_size) / total_chunks, 1.0))
 
+        # reload vector after adding new nodes
+        self.vector_node = get_vector_from_database(embedder=self.embedder)
         status_text.text("Successfully built Knowledge Graph!")
         return successful_docs
     
     def get_response(self, user_input):
-        response = None
+
         if not self.graph:
             st.error("Không thể kết nối đến Neo4j")
-            # make llm saif they can't access the graph instead of returning nothing
-            response = self.response_llm.invoke(self.build_response_prompt(user_input))
-            return response.content
+            if is_vietnamese(user_input):
+                return f"""Xin lỗi, tôi không thể truy cập vào đồ thị kiến thức vào lúc này. Vui lòng thử lại sau."""
+            else:
+                return f"""Sorry, I cannot access the knowledge graph at the moment. Please try again later."""
         
-        #extract entity relevant to user input from graph
-        extract_prompt = self.build_extract_prompt(user_input)
-        extraction_result = self.extract_llm.invoke(extract_prompt)
-        entities = extraction_result.get("entities", [])
-
-        if not entities:
-            response = self.response_llm.invoke(self.build_response_prompt(user_input))
-            return response.content
+        #extract nodes relevant to user input from graph
+        relevant_nodes = self.vector_node.similarity_search(user_input, k=5)
         
         # build graph context based on extracted entity
         graph_context_list = []
-        for entity in entities:
-            if len(entity) < 2:
-                continue
+        entity_ids = [node.page_content for node in relevant_nodes]
+        cypher_query = """
+        MATCH (n)-[r]-(m)
+        WHERE n.id IN $entity_ids 
+           OR n.id CONTAINS $query_upper 
+           OR n.id CONTAINS $query_title
+        RETURN n.id AS source, type(r) AS rel, m.id AS target
+        LIMIT 15
+        """
+        
+        query_upper = user_input.upper()
+        query_title = user_input.title()
 
-            cypher_query = """
-            MATCH (n)-[r]->(m)
-            WHERE n.id CONTAINS $entity OR m.id CONTAINS $entity
-            RETURN n.id + ' --[' + type(r) + ']--> ' + m.id AS relation
-            LIMIT 15
-            """
-            result = self.graph.query(cypher_query, parameters={"entity": entity})
-            graph_context_list.extend([record["relation"] for record in result])
+        results = self.graph.query(cypher_query, {
+            "entity_ids": entity_ids,
+            "query_upper": query_upper,
+            "query_title": query_title
+        })
+
+        for record in results:
+            relation_str = f"{record['source']} --[{record['rel']}]--> {record['target']}"
+            if record['desc']:
+                relation_str += f" ({record['desc']})"
+            graph_context_list.append(relation_str)
 
         # join all relationships into a single string as graph context for response generation
         graph_context = "\n".join(list(set(graph_context_list)))
 
         if not graph_context:
-            response = self.response_llm.invoke(self.build_response_prompt(user_input, entities=entities))
-            return response.content
-        
-        # build prompt with graph context and user input
-        prompt = self.build_response_prompt(user_input, entities=entities, context=graph_context)
-        response = self.response_llm.invoke(prompt)
-
-        return response.content, graph_context
-
-        
-    def build_response_prompt(self, user_input, entities = None, context=None):
-        if not self.graph:
-            if is_vietnamese(user_input):
-                return f"""Xin lỗi, tôi không thể truy cập vào đồ thị kiến thức vào lúc này. Vui lòng thử lại sau."""
-            else:
-                return f"""Sorry, I cannot access the knowledge graph at the moment. Please try again later."""
-            
-        if not entities:
-            if is_vietnamese(user_input):
-                return f"""Xin lỗi, tôi không thể tìm thấy thực thể nào liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp."""
-            else:
-                return f"""Sorry, I couldn't find any entities relevant to your question in the knowledge graph. Please try again with a different question or check the information provided."""
-
-        if not context:
-            # let llm said they can't find the context
             if is_vietnamese(user_input):
                 return f"""Xin lỗi, tôi không thể tìm thấy ngữ cảnh liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp."""
             else:
                 return f"""Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided."""
+        
+        # build prompt with graph context and user input
+        prompt = self.build_response_prompt(user_input, context=graph_context)
+        response = self.response_llm.invoke(prompt)
 
+        return response.content
+        
+        
+    def build_response_prompt(self, user_input, context):
         # build prompt with graph context and user input
         if is_vietnamese(user_input):
             return f"""Dựa trên input của người dùng, hãy sử dụng các mối quan hệ thực thể dưới đây (được trích xuất từ Knowledge Graph) để trả lời câu hỏi. 
@@ -241,23 +268,37 @@ class Graph_engine:
             Question: {user_input}
 
             Answer(concise, focus on the relationships between entities):"""
+        
+    def clean_graph_documents(self, graph_docs):
+        """Làm sạch sâu hơn để tăng tỷ lệ kết nối các node"""
+        for doc in graph_docs:
+            for node in doc.nodes:
+                # Loại bỏ khoảng trắng thừa, viết hoa đầu từ, và xử lý viết tắt phổ biến
+                clean_id = node.id.strip().title() 
+                node.id = clean_id
+
+            for rel in doc.relationships:
+                rel.type = rel.type.strip().replace(" ", "_").upper()
+                rel.source.id = rel.source.id.strip().title()
+                rel.target.id = rel.target.id.strip().title()
+        return graph_docs
  
 
-    def build_extract_prompt(self, user_input):
-        if is_vietnamese(user_input):
-            return f"""Dựa trên input của người dùng, hãy trích xuất các thực thể và mối quan hệ liên quan từ đồ thị kiến thức. 
-            Trả lời dưới dạng JSON với 2 trường: "entities" (danh sách các thực thể) và "relationships" (danh sách các mối quan hệ).
-            Nếu không tìm thấy thực thể hoặc mối quan hệ nào liên quan, trả về {"entities": [], "relationships": []}.
+    # def build_extract_prompt(self, user_input):
+    #     if is_vietnamese(user_input):
+    #         return f"""Dựa trên input của người dùng, hãy trích xuất các thực thể và mối quan hệ liên quan từ đồ thị kiến thức. 
+    #         Trả lời dưới dạng JSON với 2 trường: "entities" (danh sách các thực thể) và "relationships" (danh sách các mối quan hệ).
+    #         Nếu không tìm thấy thực thể hoặc mối quan hệ nào liên quan, trả về {{"entities": [], "relationships": []}}.
             
-            Input của người dùng: {user_input}
+    #         Input của người dùng: {user_input}
             
-            JSON trả về:"""
-        else:
-            return f"""Based on the user input, extract relevant entities and relationships from the knowledge graph. 
-            Respond in JSON format with 2 fields: "entities" (list of entities) and "relationships" (list of relationships).
-            If no relevant entities or relationships are found, return {"entities": [], "relationships": []}.
+    #         JSON trả về:"""
+    #     else:
+    #         return f"""Based on the user input, extract relevant entities and relationships from the knowledge graph. 
+    #         Respond in JSON format with 2 fields: "entities" (list of entities) and "relationships" (list of relationships).
+    #         If no relevant entities or relationships are found, return {{"entities": [], "relationships": []}}.
             
-            User input: {user_input}
+    #         User input: {user_input}
             
-            JSON response:"""
+    #         JSON response:"""
     
