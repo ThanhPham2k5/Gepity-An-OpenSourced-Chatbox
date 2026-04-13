@@ -26,9 +26,7 @@ def is_vietnamese(text: str) -> bool:
 
 
 def update_current_chat_to_history():
-    # Nếu đang có tin nhắn trên màn hình
     if st.session_state.messages:
-        # Tìm tiêu đề
         first_q = st.session_state.messages[0]['content']
         title = (first_q[:20] + '...') if len(first_q) > 20 else first_q
         
@@ -41,6 +39,8 @@ def update_current_chat_to_history():
                     chat['retriever'] = st.session_state.get('retriever')
                     chat['vector_store'] = st.session_state.get('vector_store')
                     chat['last_file_key'] = st.session_state.get('last_file_key')
+                    chat['uploaded_filenames'] = st.session_state.get('uploaded_filenames', [])
+                    chat['file_uploader_key'] = st.session_state.get('file_uploader_key', [])
                     break
         # TRƯỜNG HỢP 2: Đang chat ở "Cuộc trò chuyện mới" chưa có ID -> Tạo mới vào lịch sử
         else:
@@ -51,7 +51,9 @@ def update_current_chat_to_history():
                 "messages": st.session_state.messages.copy(),
                 "retriever": st.session_state.get('retriever'),
                 "vector_store": st.session_state.get('vector_store'),
-                "last_file_key": st.session_state.get('last_file_key')
+                "last_file_key": st.session_state.get('last_file_key'),
+                "uploaded_filenames": st.session_state.get('uploaded_filenames', []),
+                "file_uploader_key": st.session_state.get('file_uploader_key', [])
             }
             st.session_state.chat_history.insert(0, new_item)
             st.session_state.current_chat_id = new_id

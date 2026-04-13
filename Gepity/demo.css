@@ -133,7 +133,6 @@ section[data-testid="stSidebar"] button[kind="secondary"]:hover {
 }
 
 section[data-testid="stSidebar"] button[kind="secondary"] p::before {
-  content: "💬";
   margin-right: 10px;
   font-size: 14px;
 }

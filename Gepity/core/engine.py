@@ -3,7 +3,7 @@ from langchain_ollama import OllamaLLM
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
 from langchain_community.vectorstores import FAISS
 from utils import is_vietnamese
-
+from datetime import datetime
 
 class RAG_engine:
     def __init__(self, model_name="qwen2.5:7b"):
@@ -14,31 +14,45 @@ class RAG_engine:
             encode_kwargs={"normalize_embeddings": True}
         )
 
-    def process_document(self, uploaded_files):
-        # read files and extract text
-        all_docs = get_docs_from_uploaded_files(uploaded_files)
+    def process_document(self, uploaded_files, chunk_size=500, chunk_overlap=50):
+        all_docs = []
+        current_date = datetime.now().strftime("%d/%m/%Y")
+        for file in uploaded_files:
+            docs_of_this_file = get_docs_from_uploaded_files([file])
+            
+            for doc in docs_of_this_file:
+                doc.metadata['file_name'] = file.name 
+                doc.metadata['upload_date'] = current_date
+                doc.metadata['file_type'] = "pdf" if file.name.lower().endswith('.pdf') else "docx"
+            
+            all_docs.extend(docs_of_this_file)
 
-        # split documents into chunks
-        all_chunks = split_docs_into_chunks(all_docs)
+        all_chunks = split_docs_into_chunks(all_docs, chunk_size, chunk_overlap)
 
-        # store vector in session
         vector_store = FAISS.from_documents(all_chunks, self.embedder)
 
-        # create retriever 
         retriever = vector_store.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 3}, # retrieve top 3 most relevant chunks
+            search_kwargs={"k": 5}, 
         )
 
         return retriever, vector_store, len(all_chunks), len(all_docs)
-
-    def get_response(self, user_input, retriever):
+       
+    def get_response(self, user_input, retriever, filter_filename=None):
         # if no document uploaded, llm will answer directly
         if retriever is None:
             return self.llm.invoke(user_input), None
+        
+        search_kwargs = {"k": 5}
+        if filter_filename and filter_filename != "Tất cả":
+            search_kwargs["filter"] = {"file_name": filter_filename}
 
-        # retrieve relevant documents based on user input
-        relevant_docs = retriever.invoke(user_input)
+        # Thay vì dùng retriever.invoke() mặc định, ta chọc thẳng vào 
+        # vectorstore bên trong nó để truyền bộ lọc (filter) vào
+        relevant_docs = retriever.vectorstore.similarity_search(
+            user_input, 
+            **search_kwargs
+        )
 
         # Context building
         context = "\n\n".join([doc.page_content for doc in relevant_docs])
@@ -49,7 +63,7 @@ class RAG_engine:
         # llm response
         response = self.llm.invoke(prompt)
 
-        return response,relevant_docs
+        return response, relevant_docs
     
     def build_prompt(self, context: str, user_input: str) -> str:
         if is_vietnamese(user_input): # if user input is in Vietnamese, response in Vietnamese
