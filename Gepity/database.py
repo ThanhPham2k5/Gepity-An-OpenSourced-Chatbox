@@ -13,13 +13,14 @@ def get_graph_connection() ->Neo4jGraph | None:
     uri = os.getenv("NEO4J_URI")
     user = os.getenv("NEO4J_USERNAME")
     pwd = os.getenv("NEO4J_PASSWORD")
+    name = os.getenv("NEO4J_DATABASENAME")
     
     try:
         graph = Neo4jGraph(
             url=uri, 
             username=user, 
             password=pwd, 
-            database="7a0ac107",
+            database=name,
             refresh_schema=True
         )
         return graph

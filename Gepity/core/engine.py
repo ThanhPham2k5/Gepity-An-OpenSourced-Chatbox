@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama, OllamaLLM
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
@@ -95,37 +98,56 @@ class Graph_engine:
 
         self.graph = get_graph_connection()
 
-
-        graph_prompt = ChatPromptTemplate.from_messages([
+        self.extraction_prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
-                """Bạn là một chuyên gia về Knowledge Graph. Nhiệm vụ của bạn là trích xuất các thực thể và mối quan hệ từ văn bản được cung cấp theo các nguyên tắc sau:
+                """Bạn là một hệ thống trích xuất thông tin. Trích xuất các thực thể và mối quan hệ từ văn bản thành định dạng JSON nghiêm ngặt.
+                
+                Quy tắc:
+                1. Mọi Entity BẮT BUỘC phải có một 'description' (mô tả ngắn gọn dựa trên ngữ cảnh).
+                2. Tên Entity phải được viết hoa chữ cái đầu (Title Case).
+                3. Relationship 'type' phải viết hoa và dùng dấu gạch dưới (VD: SU_DUNG, LA_MOT).
 
-                1. THỰC THỂ (ENTITIES): 
-                - Sử dụng danh từ cụ thể, ngắn gọn. 
-                - Label của thực thể phải là một từ đơn mô tả loại (ví dụ: 'Technology', 'Concept', 'Component', 'Person').
-
-                2. MỐI QUAN HỆ (RELATIONSHIPS):
-                - Sử dụng động từ viết hoa, nối bằng dấu gạch dưới (ví dụ: 'SỬ_DỤNG', 'THUỘC_VỀ').
-
-                3. TÍNH ĐỒNG NHẤT:
-                - Quy về một tên gọi chuẩn nhất cho các thực thể trùng lặp.
-                - Luôn trích xuất thuộc tính 'description' nếu có.
-
-                4. ĐỊNH DẠNG: Trả về kết quả dưới dạng đồ thị Nodes và Edges."""
+                Định dạng JSON yêu cầu:
+                {
+                  "entities": [{"name": "string", "description": "string"}],
+                  "relationships": [{"source": "string", "target": "string", "type": "string"}]
+                }"""
             ),
             (
                 "human",
-                "Hãy trích xuất thực thể và quan hệ từ đoạn văn bản sau: {input}"
+                "Trích xuất từ văn bản sau:\n{input}"
             ),
         ])
 
-        # Configure transformer
-        self.transformer = LLMGraphTransformer(
-            llm=self.extract_llm,
-            node_properties=["description"],
-            prompt= graph_prompt,
-        )
+        self.extraction_chain = self.extraction_prompt | self.extract_llm
+
+        self.community_prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                """Bạn là một chuyên gia tổng hợp dữ liệu (Data Synthesizer). 
+                Dựa trên danh sách các thực thể và mối quan hệ trong một cụm (community) thuộc Knowledge Graph, 
+                hãy tạo ra một tóm tắt chi tiết và trả về DƯỚI DẠNG JSON NGHIÊM NGẶT.
+
+                Quy tắc:
+                1. Mọi Community phải có một 'title' (mô tả ngắn gọn đại diện cho chủ đề chung của cụm này).
+                2. Mọi Community phải có một 'summary' (tóm tắt ngắn gọn (khoảng 1-2 câu) về cụm này).
+                3. Mọi Community phải có một 'full_content' (đoạn văn chi tiết mô tả các thực thể chính và cách chúng liên kết với nhau).
+
+                Định dạng JSON yêu cầu:
+                {
+                  "title": "string",
+                  "summary": "string",
+                  "full_content": "string"
+                }"""
+            ),
+            (
+                "human",
+                "Dữ liệu của cụm:\n{community_data}"
+            ),
+        ])
+
+        self.community_chain = self.community_prompt | self.response_llm
 
         self.embedder = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
@@ -133,20 +155,22 @@ class Graph_engine:
             encode_kwargs={"normalize_embeddings": True}
         )
 
-        self.vector_node = get_vector_from_database(embedder=self.embedder)
+        self.vector_index = get_vector_from_database(embedder=self.embedder)
+
+        
 
     def process_document(self, uploaded_files):
         # read files and extract text
         all_docs = get_docs_from_uploaded_files(uploaded_files)
 
-        # Bổ sung logic: Ghi đè hoặc thêm thông tin file_name vào metadata
-        for doc in all_docs:
-            # Lấy tên file từ file_path hoặc thuộc tính có sẵn
-            actual_file_name = doc.metadata.get("source", "Unknown_File").split("/")[-1]
-            doc.metadata["file_name"] = actual_file_name
+        # # Bổ sung logic: Ghi đè hoặc thêm thông tin file_name vào metadata
+        # for doc in all_docs:
+        #     # Lấy tên file từ file_path hoặc thuộc tính có sẵn
+        #     actual_file_name = doc.metadata.get("source", "Unknown_File").split("/")[-1]
+        #     doc.metadata["filename"] = actual_file_name
 
         # split documents into chunks
-        all_chunks = split_docs_into_chunks(all_docs, chunk_size=800, chunk_overlap=100) 
+        all_chunks = split_docs_into_chunks(all_docs, chunk_size=800, chunk_overlap=80) 
 
         return all_chunks
 
@@ -162,34 +186,141 @@ class Graph_engine:
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        batch_size = 2 # chunks per batch, adjust based on performance
         successful_docs = 0
-        for i in range(0, total_chunks, batch_size):
-            batch = all_chunks[i : i + batch_size]
-            status_text.text(f"Đang phân tích Graph: {i}/{total_chunks} đoạn văn...")
-            try:
-                #extract entity and relationship from batch, then sync to graph
-                graph_docs = self.transformer.convert_to_graph_documents(batch)
-
-                graph_docs = self.clean_graph_documents(graph_docs)
-          
-                self.graph.add_graph_documents(
-                    graph_docs, 
-                    baseEntityLabel=True, 
-                    include_source=True
-                )
-                successful_docs += len(batch)
-            except Exception as e:
-                # if error occurs, skip the batch and continue with next one
-                st.warning(f"Bỏ qua batch {i} do lỗi xử lý: {e}")
+        for i, chunk in enumerate(all_chunks):
+            status_text.text(f"Đang xử lý và nhúng: {i+1}/{total_chunks} đoạn văn...")
             
-            # Update progress bar
-            progress_bar.progress(min((i + batch_size) / total_chunks, 1.0))
+            # Prepare Document and Chunk Data
+            doc_name = chunk.metadata.get("filename", "unknown")
+            doc_source = chunk.metadata.get("source", "unknown")
+            chunk_text = chunk.page_content
 
-        # reload vector after adding new nodes
-        self.vector_node = get_vector_from_database(embedder=self.embedder)
-        status_text.text("Successfully built Knowledge Graph!")
+            # ID for chunk
+            chunk_id = hashlib.md5(chunk_text.encode('utf-8')).hexdigest()
+
+            # generate embeddings for the chunk
+            chunk_embedding = self.embedder.embed_query(chunk_text)
+
+            # insert document and chunk nodes into neo4j
+            chunk_cypher = """
+            MERGE (d:Document {source: $doc_source})
+            SET d.name = $doc_name
+            
+            MERGE (c:Chunk {id: $chunk_id})
+            SET c.text = $chunk_text, c.embedding = $chunk_embedding
+            
+            MERGE (c)-[:PART_OF]->(d)
+            """
+            self.graph.query(chunk_cypher, {
+                "doc_source": doc_source, "doc_name": doc_name,
+                "chunk_id": chunk_id, "chunk_text": chunk_text, "chunk_embedding": chunk_embedding
+            })
+
+            # extract entities and relationships via LLM
+            try:
+                response = self.extraction_chain.invoke({"input": chunk_text})
+
+                # parse string to json
+                extracted_data = json.loads(response.content)
+
+                # get entities and relationships from json data
+                entities = extracted_data.get("entities", [])
+                relationships = extracted_data.get("relationships", []) 
+
+                # process and embeds entities
+                for ent in entities:
+                    ent_name = ent.get("name", "").strip().title()
+                    ent_desc = ent.get("description", "Không có mô tả").strip
+
+                    if not ent_name:
+                        continue
+
+                    # Generate embedding for the entity (combining name and desc for richer vector)
+                    ent_embedding = self.embedder.embed_query(f"{ent_name}: {ent_desc}")
+
+                    # insert entity into neo4j
+                    ent_cypher = """
+                    MATCH (c:Chunk {id: $chunk_id})
+                    MERGE (e:Entity {name: $name})
+                    SET e.description = $desc, e.embedding = $embedding
+                    MERGE (c)-[:HAS_ENTITY]->(e)
+                    """
+                    self.graph.query(ent_cypher, {
+                        "chunk_id": chunk_id,
+                        "name": ent_name,
+                        "desc": ent_desc,
+                        "embedding": ent_embedding
+                    })
+
+                # process relationships
+                for rel in relationships:
+                    src_name = rel.get("source", "").strip().title()
+                    tgt_name = rel.get("target", "").strip().title()
+                    rel_type = rel.get("type", "RELATES_TO").strip().upper().replace(" ", "_")
+
+                    if not src_name or not tgt_name: continue
+
+                    # insert relationship into neo4j
+                    rel_cypher = f"""
+                    MATCH (source:Entity {{name: $src_name}})
+                    MATCH (target:Entity {{name: $tgt_name}})
+                    MERGE (source)-[r:RELATES_TO {{type: $rel_type}}]->(target)
+                    """
+                    
+                    self.graph.query(rel_cypher, {
+                        "src_name": src_name,
+                        "tgt_name": tgt_name,
+                        "rel_type": rel_type
+                    })
+
+                successful_docs += 1
+            except Exception as e:
+                st.warning(f"Lỗi phân tích cú pháp JSON ở chunk {i+1}: {e}")
+
+            progress_bar.progress((i + 1) / total_chunks)
+
+        status_text.text("Đã xây dựng xong Lexical Knowledge Graph!")
+
+        # create vector index for graph
+        self.create_vector_indexes()
+
         return successful_docs
+    
+    def create_vector_indexes(self):
+        """Creates native vector indexes in Neo4j for Chunks and Entities"""
+        # 768 is the standard dimension for paraphrase-multilingual-mpnet-base-v2
+        cypher_queries = [
+            """
+            CREATE VECTOR INDEX chunk_embeddings IF NOT EXISTS
+            FOR (c:Chunk) ON (c.embedding)
+            OPTIONS {indexConfig: {
+              `vector.dimensions`: 768,
+              `vector.similarity_function`: 'cosine'
+            }}
+            """,
+            """
+            CREATE VECTOR INDEX entity_embeddings IF NOT EXISTS
+            FOR (e:Entity) ON (e.embedding)
+            OPTIONS {indexConfig: {
+              `vector.dimensions`: 768,
+              `vector.similarity_function`: 'cosine'
+            }}
+            """
+        ]
+        for query in cypher_queries:
+            try:
+                self.graph.query(query)
+            except Exception as e:
+                print(f"Index creation note: {e}")
+
+    def build_community(self):
+        """Phát hiện và tóm tắt cộng đồng theo cấu trúc Hierarchical Lexical Graph"""
+        if not self.graph:
+            return
+        
+        st.info("Bắt đầu xây dựng Communities...")
+
+        
     
     def get_response(self, user_input):
 
@@ -201,7 +332,7 @@ class Graph_engine:
                 return f"""Sorry, I cannot access the knowledge graph at the moment. Please try again later."""
         
         #extract nodes relevant to user input from graph
-        relevant_nodes = self.vector_node.similarity_search(user_input, k=5)
+        relevant_nodes = self.vector_index.similarity_search(user_input, k=5)
         
         # build graph context based on extracted entity
         graph_context_list = []
@@ -286,23 +417,4 @@ class Graph_engine:
                 rel.source.id = rel.source.id.strip().title()
                 rel.target.id = rel.target.id.strip().title()
         return graph_docs
- 
-
-    # def build_extract_prompt(self, user_input):
-    #     if is_vietnamese(user_input):
-    #         return f"""Dựa trên input của người dùng, hãy trích xuất các thực thể và mối quan hệ liên quan từ đồ thị kiến thức. 
-    #         Trả lời dưới dạng JSON với 2 trường: "entities" (danh sách các thực thể) và "relationships" (danh sách các mối quan hệ).
-    #         Nếu không tìm thấy thực thể hoặc mối quan hệ nào liên quan, trả về {{"entities": [], "relationships": []}}.
-            
-    #         Input của người dùng: {user_input}
-            
-    #         JSON trả về:"""
-    #     else:
-    #         return f"""Based on the user input, extract relevant entities and relationships from the knowledge graph. 
-    #         Respond in JSON format with 2 fields: "entities" (list of entities) and "relationships" (list of relationships).
-    #         If no relevant entities or relationships are found, return {{"entities": [], "relationships": []}}.
-            
-    #         User input: {user_input}
-            
-    #         JSON response:"""
     
