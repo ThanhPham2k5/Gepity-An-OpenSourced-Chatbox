@@ -106,7 +106,7 @@ with st.sidebar:
         st.rerun()
 
     # Comparison Mode Toggle
-    st.toggle("⚖️ Bật chế độ so sánh GraphRAG", key="comparison_mode")
+    st.toggle("So sánh vector search với hybrid search", key="comparison_mode")
 
     # Section: Cài đặt Chunk 
     st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
@@ -148,7 +148,7 @@ with st.sidebar:
                 st.session_state.vector_store = chat.get('vector_store')
                 st.session_state['last_file_key'] = chat.get('last_file_key')
                 st.session_state['uploaded_filenames'] = chat.get('uploaded_filenames', [])
-                st.session_state['file_uploader_key'] = chat.get('file_uploader_key', [])
+                st.session_state['file_uploader_key'] = chat.get('file_uploader_key') or str(uuid.uuid4())
                 if "file_stats" in st.session_state:
                     del st.session_state["file_stats"]
 
@@ -258,7 +258,7 @@ with chat_container:
             # --- NGUỒN TRÍCH DẪN (STANDARD RAG) ---
             if not is_user and msg.get("sources"):
                 st.markdown('<div class="source-divider"></div>', unsafe_allow_html=True)
-                with st.expander("📚 Xem nguồn trích dẫn"):
+                with st.expander("📚 Nguồn trích dẫn"):
                     for i, doc in enumerate(msg["sources"]):
                         file_name = doc.metadata.get('file_name', 'Tài liệu')
                         page_num = doc.metadata.get('page', 'N/A')
@@ -273,7 +273,7 @@ with chat_container:
             with col1:
                 st.markdown(f"""
                     <div class="chat-row ai-bubble-row">
-                        <div class="chat-bubble ai-bubble" style="width: 100%;">
+                        <div class="chat-bubble ai-bubble">
                             <div class="bubble-info">
                                 <span class="bubble-name">📚 Standard RAG</span>
                                 <span class="bubble-time">{msg.get('time', '')}</span>
@@ -284,7 +284,7 @@ with chat_container:
                 """, unsafe_allow_html=True)
                 
                 if msg.get("sources"):
-                    with st.expander("📚 Xem nguồn trích dẫn"):
+                    with st.expander("📚 Nguồn trích dẫn"):
                         for i, doc in enumerate(msg["sources"]):
                             file_name = doc.metadata.get('file_name', 'Tài liệu')
                             page_num = doc.metadata.get('page', 'N/A')
@@ -293,19 +293,28 @@ with chat_container:
                             st.markdown(f"> {doc.page_content}")
 
             with col2:
-                graph_content = msg.get("graph_content", "*Tính năng GraphRAG đang được phát triển... Nó sẽ hiển thị các mối quan hệ thực thể ở đây.*")
-                
-                st.markdown(f"""
-                    <div class="chat-row ai-bubble-row">
-                        <div class="chat-bubble ai-bubble" style="width: 100%; border-left: 4px solid #4CAF50;">
-                            <div class="bubble-info">
-                                <span class="bubble-name">🕸️ GraphRAG</span>
-                                <span class="bubble-time">{msg.get('time', '')}</span>
+                hybrid_content = msg.get("hybrid_content")
+                if hybrid_content:
+                    st.markdown(f"""
+                        <div class="chat-row ai-bubble-row">
+                            <div class="chat-bubble ai-bubble">
+                                <div class="bubble-info">
+                                    <span class="bubble-name">🧠 Hybrid RAG (Vector + BM25)</span>
+                                    <span class="bubble-time">{msg.get('time', '')}</span>
+                                </div>
+                                <div class="bubble-content">{hybrid_content}</div>
                             </div>
-                            <div class="bubble-content">{graph_content}</div>
                         </div>
-                    </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
+                
+                    if msg.get("hybrid_sources"):
+                        with st.expander("📚 Nguồn trích dẫn"):
+                            for i, doc in enumerate(msg["hybrid_sources"]):
+                                file_name = doc.metadata.get('file_name', 'Tài liệu')
+                                page_num = doc.metadata.get('page', 'N/A')
+                                page_num = page_num + 1 if isinstance(page_num, int) else page_num
+                                st.markdown(f"**{file_name} (Trang {page_num})**")
+                                st.markdown(f"> {doc.page_content}")
         
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
 # user input
@@ -377,14 +386,42 @@ if st.session_state.messages:
 if user_req:
     current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
     st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
+    
     with st.spinner("Gepity đang suy nghĩ..."):
-        response, sources = st.session_state.rag.get_response(user_req, st.session_state.retriever, filter_filename=filter_choice)
         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-        st.session_state.messages.append({
-            "role": "ai", 
-            "content": response, 
-            "time": ai_time,
-            "sources": sources
-        })
+        if st.session_state.get("comparison_mode", False):
+            # --- Cột trái: Standard RAG (Chỉ dùng Vector FAISS) ---
+            # Ta lấy trực tiếp từ vector_store, bỏ qua BM25
+            pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3}) if st.session_state.vector_store else None
+            res_standard, sources_standard = st.session_state.rag.get_response(
+                user_req, pure_vector_retriever, filter_filename=filter_choice
+            )
+            
+            # --- Cột phải: Hybrid RAG (Ensemble FAISS + BM25) ---
+            # st.session_state.retriever hiện tại chính là bản đã trộn (Ensemble)
+            res_hybrid, sources_hybrid = st.session_state.rag.get_response(
+                user_req, st.session_state.retriever, filter_filename=filter_choice
+            )
+            
+            st.session_state.messages.append({
+                "role": "ai", 
+                "content": res_standard,                
+                "sources": sources_standard, 
+                "hybrid_content": res_hybrid,           
+                "hybrid_sources": sources_hybrid,       
+                "time": ai_time
+            })
+            
+        else:
+            response, sources = st.session_state.rag.get_response(
+                user_req, st.session_state.retriever, filter_filename=filter_choice
+            )
+            
+            st.session_state.messages.append({
+                "role": "ai", 
+                "content": response, 
+                "sources": sources,
+                "time": ai_time
+            })
 
     st.rerun()

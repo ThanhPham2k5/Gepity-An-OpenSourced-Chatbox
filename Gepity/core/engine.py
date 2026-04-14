@@ -4,7 +4,8 @@ from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
 from langchain_community.vectorstores import FAISS
 from utils import is_vietnamese
 from datetime import datetime
-
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
 class RAG_engine:
     def __init__(self, model_name="qwen2.5:7b"):
         self.llm = OllamaLLM(model=model_name, base_url="http://localhost:11434")
@@ -30,37 +31,38 @@ class RAG_engine:
         all_chunks = split_docs_into_chunks(all_docs, chunk_size, chunk_overlap)
 
         vector_store = FAISS.from_documents(all_chunks, self.embedder)
+        faiss_retriever = vector_store.as_retriever(search_kwargs={"k": 3})
 
-        retriever = vector_store.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": 5}, 
+        bm25_retriever = BM25Retriever.from_documents(all_chunks)
+        bm25_retriever.k = 3
+
+        ensemble_retriever = EnsembleRetriever(
+            retrievers=[bm25_retriever, faiss_retriever], 
+            weights=[0.5, 0.5]
         )
 
-        return retriever, vector_store, len(all_chunks), len(all_docs)
+        return ensemble_retriever, vector_store, len(all_chunks), len(all_docs)
        
     def get_response(self, user_input, retriever, filter_filename=None):
-        # if no document uploaded, llm will answer directly
         if retriever is None:
             return self.llm.invoke(user_input), None
-        
-        search_kwargs = {"k": 5}
+
+        # 1. GỌI HÀM TRUY XUẤT CHUẨN CỦA LANGCHAIN
+        # Hàm invoke() này chạy an toàn cho TẤT CẢ các loại Retriever (Vector, BM25, Ensemble)
+        raw_docs = retriever.invoke(user_input)
+
+        # 2. LỌC TÀI LIỆU (POST-FILTERING)
+        # Thay vì ép DB lọc (dễ gây lỗi), ta lấy kết quả ra rồi tự dùng Python để lọc
+        relevant_docs = []
         if filter_filename and filter_filename != "Tất cả":
-            search_kwargs["filter"] = {"file_name": filter_filename}
+            for doc in raw_docs:
+                if doc.metadata.get("file_name") == filter_filename:
+                    relevant_docs.append(doc)
+        else:
+            relevant_docs = raw_docs
 
-        # Thay vì dùng retriever.invoke() mặc định, ta chọc thẳng vào 
-        # vectorstore bên trong nó để truyền bộ lọc (filter) vào
-        relevant_docs = retriever.vectorstore.similarity_search(
-            user_input, 
-            **search_kwargs
-        )
-
-        # Context building
         context = "\n\n".join([doc.page_content for doc in relevant_docs])
-
-        # build prompt with context and user input
         prompt = self.build_prompt(context, user_input)
-
-        # llm response
         response = self.llm.invoke(prompt)
 
         return response, relevant_docs
