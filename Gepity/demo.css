@@ -111,6 +111,11 @@ button[kind="primary"] {
   border-radius: 8px !important;
   padding: 10px !important;
   font-weight: 600 !important;
+  transition: all 0.3s ease !important;
+}
+
+button[kind="primary"]:hover {
+  background-color: #0056b3 !important;
 }
 
 /* 2. Nút bấm Lịch sử trò chuyện (Secondary trong Sidebar) */
@@ -130,11 +135,6 @@ section[data-testid="stSidebar"] button[kind="secondary"] {
 section[data-testid="stSidebar"] button[kind="secondary"]:hover {
   background-color: rgba(255, 255, 255, 0.1) !important;
   color: #ffffff !important;
-}
-
-section[data-testid="stSidebar"] button[kind="secondary"] p::before {
-  margin-right: 10px;
-  font-size: 14px;
 }
 
 /*========================================================
@@ -159,6 +159,15 @@ div[data-testid="stMainBlockContainer"] {
 }
 
 /* Header Tùy Chỉnh */
+section.stMain
+  div.stMainBlockContainer
+  div[data-testid="stVerticalBlockBorderWrapper"]
+  > div
+  > div.stVerticalBlock
+  > div:nth-of-type(2) {
+  margin-top: -15px;
+}
+
 .main-header {
   background: #ffffff;
   border-bottom: 1px solid #dee2e6;
@@ -229,6 +238,10 @@ div[data-testid="stFileUploaderDropzone"] {
 }
 .ai-bubble-row {
   justify-content: flex-start;
+}
+
+div[data-testid="column"] .chat-row {
+  padding: 0 !important;
 }
 
 .chat-bubble {
@@ -304,7 +317,6 @@ textarea[data-testid="stChatInputTextArea"] {
   transition: all 0.2s ease-in-out !important;
 }
 
-/* [SỬA LỖI]: Thêm !important để đảm bảo màu hover hoạt động */
 .chat-input-container-anchor + div button:hover {
   background-color: rgba(0, 123, 255, 0.1) !important;
   color: #007bff !important;
@@ -312,6 +324,23 @@ textarea[data-testid="stChatInputTextArea"] {
 
 div[data-testid="stVerticalBlock"] {
   position: static !important;
+  align-items: center;
+  justify-content: center;
+}
+
+div[data-testid="stHorizontalBlock"] {
+  width: 100% !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  width: 100% !important;
+}
+
+section[data-testid="stSidebar"]
+  div[data-testid="stCheckbox"]
+  label[data-baseweb="checkbox"]
+  > div:last-child {
+  color: #ffffff !important;
 }
 
 div[data-testid="stPopover"] {
@@ -327,33 +356,52 @@ div[data-testid="stFileUploaderDeleteBtn"] {
   height: 40px !important;
 }
 
-/* Đường kẻ phân cách giữa câu trả lời và phần nguồn */
-.source-divider {
-  border-top: 1px dashed #dee2e6;
-  margin: 15px 0 10px 0;
+section[data-testid="stSidebar"]
+  div[data-testid="stSidebarContent"]
+  div.stElementContainer
+  div.stAlert
+  > div {
+  color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
+/*========================================================
+   4. CITATIONS & EXPANDER (Nguồn trích dẫn)
+========================================================*/
+.source-divider {
+  border-top: 1px dashed #dee2e6;
+  margin: 15px 5rem 10px 5rem;
+}
+
+/* Bỏ căn lề đường phân cách khi ở chế độ cột so sánh */
+div[data-testid="column"] .source-divider {
+  margin: 15px 0 10px 0 !important;
+}
+
+section[data-testid="stSidebar"] div[data-testid="stExpander"] {
+  width: 100% !important;
+}
+
+/* Khung Expander (Xem nguồn) */
 div[data-testid="stExpander"] {
-  border: none !important;
-  background-color: #f8f9fa !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  background-color: #ffffff !important;
   border-radius: 8px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  width: 74% !important;
 }
 
 div[data-testid="stExpander"] summary {
   padding: 10px 15px !important;
-  color: #007bff !important;
+  color: rgb(33, 37, 41) !important;
   font-size: 0.85rem !important;
   font-weight: 600 !important;
 }
 
-div[data-testid="stExpander"] summary p {
-  color: #007bff !important;
-}
-
-/* Định dạng đoạn highlight (Blockquote) của tài liệu gốc */
+/* Đoạn text trích dẫn (Blockquote) */
 div[data-testid="stExpanderDetails"] blockquote {
   border-left: 4px solid #ffc107 !important;
-  background-color: #ffffff;
+  background-color: #f8f9fa;
   padding: 10px 15px;
   margin-bottom: 15px;
   font-size: 0.85rem;

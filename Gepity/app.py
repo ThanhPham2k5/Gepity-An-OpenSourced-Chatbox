@@ -105,6 +105,9 @@ with st.sidebar:
             del st.session_state["uploaded_filenames"]
         st.rerun()
 
+    # Comparison Mode Toggle
+    st.toggle("⚖️ Bật chế độ so sánh GraphRAG", key="comparison_mode")
+
     # Section: Cài đặt Chunk 
     st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
     with st.expander("⚙️ Tùy chỉnh Chunk Parameters", expanded=False):
@@ -239,33 +242,70 @@ with chat_container:
         is_user = msg["role"] == "user"
         bubble_class = "user-bubble" if is_user else "ai-bubble"
         name = "Bạn" if is_user else "Gepity"
-        
-        st.markdown(f"""
-            <div class="chat-row {bubble_class}-row">
-                <div class="chat-bubble {bubble_class}">
-                    <div class="bubble-info">
-                        <span class="bubble-name">{name}</span>
-                        <span class="bubble-time">{msg.get('time', '')}</span>
+        if is_user or not st.session_state.get("comparison_mode", False):
+            st.markdown(f"""
+                <div class="chat-row {bubble_class}-row">
+                    <div class="chat-bubble {bubble_class}">
+                        <div class="bubble-info">
+                            <span class="bubble-name">{name}</span>
+                            <span class="bubble-time">{msg.get('time', '')}</span>
+                        </div>
+                        <div class="bubble-content">{msg['content']}</div>
                     </div>
-                    <div class="bubble-content">{msg['content']}</div>
                 </div>
-            </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-        # --- THÊM PHẦN HIỂN THỊ NGUỒN TRÍCH DẪN  ---
-        if not is_user and msg.get("sources"):
-            st.markdown('<div class="source-divider"></div>', unsafe_allow_html=True)
-            with st.expander("📚 Xem nguồn trích dẫn"):
-                for i, doc in enumerate(msg["sources"]):
-                    file_name = doc.metadata.get('file_name', 'Tài liệu')
-                    page_num = doc.metadata.get('page', 'N/A')
-                    if isinstance(page_num, int):
-                        page_num += 1 
-                        
-                    st.markdown(f"**Nguồn {i+1} ({file_name} - Trang {page_num}):**")
-                    st.markdown(f"> {doc.page_content}")
+            # --- NGUỒN TRÍCH DẪN (STANDARD RAG) ---
+            if not is_user and msg.get("sources"):
+                st.markdown('<div class="source-divider"></div>', unsafe_allow_html=True)
+                with st.expander("📚 Xem nguồn trích dẫn"):
+                    for i, doc in enumerate(msg["sources"]):
+                        file_name = doc.metadata.get('file_name', 'Tài liệu')
+                        page_num = doc.metadata.get('page', 'N/A')
+                        if isinstance(page_num, int):
+                            page_num += 1 
+                            
+                        st.markdown(f"**Nguồn {i+1} ({file_name} - Trang {page_num}):**")
+                        st.markdown(f"> {doc.page_content}")
 
-        st.markdown("</div></div>", unsafe_allow_html=True)
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"""
+                    <div class="chat-row ai-bubble-row">
+                        <div class="chat-bubble ai-bubble" style="width: 100%;">
+                            <div class="bubble-info">
+                                <span class="bubble-name">📚 Standard RAG</span>
+                                <span class="bubble-time">{msg.get('time', '')}</span>
+                            </div>
+                            <div class="bubble-content">{msg['content']}</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                if msg.get("sources"):
+                    with st.expander("📚 Xem nguồn trích dẫn"):
+                        for i, doc in enumerate(msg["sources"]):
+                            file_name = doc.metadata.get('file_name', 'Tài liệu')
+                            page_num = doc.metadata.get('page', 'N/A')
+                            page_num = page_num + 1 if isinstance(page_num, int) else page_num
+                            st.markdown(f"**{file_name} (Trang {page_num})**")
+                            st.markdown(f"> {doc.page_content}")
+
+            with col2:
+                graph_content = msg.get("graph_content", "*Tính năng GraphRAG đang được phát triển... Nó sẽ hiển thị các mối quan hệ thực thể ở đây.*")
+                
+                st.markdown(f"""
+                    <div class="chat-row ai-bubble-row">
+                        <div class="chat-bubble ai-bubble" style="width: 100%; border-left: 4px solid #4CAF50;">
+                            <div class="bubble-info">
+                                <span class="bubble-name">🕸️ GraphRAG</span>
+                                <span class="bubble-time">{msg.get('time', '')}</span>
+                            </div>
+                            <div class="bubble-content">{graph_content}</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
         
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
 # user input
