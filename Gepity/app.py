@@ -1,11 +1,11 @@
+from sqlalchemy import all_
 import streamlit as st
 import os
 from datetime import datetime 
 import streamlit.components.v1 as components
 from utils.helpers import img_to_base64, update_current_chat_to_history
-from core import RAG_engine
+from core import RAG_engine, Graph_engine
 import uuid
-
 
 # SETUP & SESSIONS -------------------------------------------------------
 st.set_page_config(page_title="Gepity AI", layout="wide")
@@ -41,6 +41,9 @@ def confirm_action_dialog(action_type):
 
 if "rag" not in st.session_state:
     st.session_state.rag = RAG_engine()
+
+if "graph_engine" not in st.session_state:
+    st.session_state.graph_engine = Graph_engine()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -319,6 +322,22 @@ with chat_container:
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
 # user input
 user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
+
+# store response into session
+if user_req:
+    # add user request to session
+    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
+
+    # redraw_chats()
+
+    # get response from llm with loading spinner
+    with st.spinner("Gepity đang suy nghĩ..."):
+        response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
+        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+        st.session_state.messages.append({"role": "ai", "content": response, "time": ai_time}) # add llm's response to session
+
+    st.rerun()
 
 # upload file
 st.markdown('<div class="chat-input-container-anchor"></div>', unsafe_allow_html=True)

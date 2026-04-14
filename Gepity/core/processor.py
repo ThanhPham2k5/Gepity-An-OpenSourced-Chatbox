@@ -7,6 +7,9 @@ def get_docs_from_uploaded_files(uploaded_files: list):
     all_docs = []
     
     for uploaded_file in uploaded_files:
+        # reset file pointer to the beginning
+        uploaded_file.seek(0)
+
         suffix = os.path.splitext(uploaded_file.name)[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
             tmp_file.write(uploaded_file.read())
