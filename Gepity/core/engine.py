@@ -6,11 +6,18 @@ from langchain_ollama import ChatOllama, OllamaLLM
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
 from langchain_community.vectorstores import FAISS
 from utils import is_vietnamese
+from datetime import datetime
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
+from langchain_classic.chains.history_aware_retriever import create_history_aware_retriever
+from langchain_classic.chains.retrieval import create_retrieval_chain
+from langchain_classic.chains.combine_documents.stuff import create_stuff_documents_chain
+from langchain_core.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages.human import HumanMessage
+from langchain_core.messages.ai import AIMessage
 from database import get_graph_connection, get_vector_from_database
 from langchain_experimental.graph_transformers import LLMGraphTransformer
-from langchain_core.prompts import ChatPromptTemplate
 import streamlit as st
-
 
 class RAG_engine:
     def __init__(self, model_name="qwen2.5:3b"):
@@ -21,42 +28,105 @@ class RAG_engine:
             encode_kwargs={"normalize_embeddings": True}
         )
 
-    def process_document(self, uploaded_files):
-        # read files and extract text
-        all_docs = get_docs_from_uploaded_files(uploaded_files)
+    def process_document(self, uploaded_files, chunk_size=500, chunk_overlap=50):
+        all_docs = []
+        current_date = datetime.now().strftime("%d/%m/%Y")
+        for file in uploaded_files:
+            docs_of_this_file = get_docs_from_uploaded_files([file])
+            
+            for doc in docs_of_this_file:
+                doc.metadata['file_name'] = file.name 
+                doc.metadata['upload_date'] = current_date
+                doc.metadata['file_type'] = "pdf" if file.name.lower().endswith('.pdf') else "docx"
+            
+            all_docs.extend(docs_of_this_file)
 
-        # split documents into chunks
-        all_chunks = split_docs_into_chunks(all_docs)
+        all_chunks = split_docs_into_chunks(all_docs, chunk_size, chunk_overlap)
 
-        # store vector in session
         vector_store = FAISS.from_documents(all_chunks, self.embedder)
+        faiss_retriever = vector_store.as_retriever(search_kwargs={"k": 3})
 
-        # create retriever 
-        retriever = vector_store.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": 3}, # retrieve top 3 most relevant chunks
+        bm25_retriever = BM25Retriever.from_documents(all_chunks)
+        bm25_retriever.k = 3
+
+        ensemble_retriever = EnsembleRetriever(
+            retrievers=[bm25_retriever, faiss_retriever], 
+            weights=[0.5, 0.5]
         )
 
-        return retriever, vector_store, len(all_chunks), len(all_docs)
+        return ensemble_retriever, vector_store, len(all_chunks), len(all_docs)
+       
+    def get_response(self, user_input, retriever, filter_filename=None, chat_history=None):
+        # Xử lý lịch sử trò chuyện
+        formatted_history = []
+        if chat_history:
+            for msg in chat_history:
+                if msg["role"] == "user":
+                    formatted_history.append(HumanMessage(content=msg["content"]))
+                elif msg["role"] == "ai":
+                    formatted_history.append(AIMessage(content=msg["content"]))
 
-    def get_response(self, user_input, retriever):
-        # if no document uploaded, llm will answer directly
         if retriever is None:
-            return self.llm.invoke(user_input)
+            if formatted_history:
+                prompt_chitchat = ChatPromptTemplate.from_messages([
+                    ("system", "Bạn là một trợ lý AI hữu ích."),
+                    MessagesPlaceholder(variable_name="chat_history"),
+                    ("human", "{input}"),
+                ])
+                chain_chitchat = prompt_chitchat | self.llm
+                return chain_chitchat.invoke({"input": user_input, "chat_history": formatted_history}).content, None
+            else:
+                return self.llm.invoke(user_input).content, None
 
-        # retrieve relevant documents based on user input
-        relevant_docs = retriever.invoke(user_input)
+        # Conservation RAG
+        contextualize_q_system_prompt = (
+            "Dựa trên lịch sử trò chuyện và câu hỏi mới nhất của người dùng, "
+            "có thể câu hỏi mới đang tham chiếu đến ngữ cảnh trong lịch sử trò chuyện. "
+            "Hãy viết lại câu hỏi thành một câu hỏi độc lập (standalone question) có thể tự hiểu được "
+            "mà không cần lịch sử trò chuyện. "
+            "KHÔNG trả lời câu hỏi, chỉ viết lại nếu cần thiết, nếu không thì trả về nguyên bản."
+        )
+        contextualize_q_prompt = ChatPromptTemplate.from_messages([
+            ("system", contextualize_q_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ])
+        history_aware_retriever = create_history_aware_retriever(
+            self.llm, retriever, contextualize_q_prompt
+        )
+        qa_system_prompt = (
+            "Bạn là trợ lý giải đáp thắc mắc. Sử dụng các tài liệu được cung cấp dưới đây để trả lời câu hỏi.\n\n"
+            "{context}"
+        )
+        qa_prompt = ChatPromptTemplate.from_messages([
+            ("system", qa_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ])
+        question_answer_chain = create_stuff_documents_chain(self.llm, qa_prompt)
+        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
-        # Context building
-        context = "\n\n".join([doc.page_content for doc in relevant_docs])
+        # 1. GỌI HÀM TRUY XUẤT CHUẨN CỦA LANGCHAIN
+        # Hàm invoke() này chạy an toàn cho TẤT CẢ các loại Retriever (Vector, BM25, Ensemble)
+        raw_docs = history_aware_retriever.invoke({"input": user_input, "chat_history": formatted_history})
 
-        # build prompt with context and user input
-        prompt = self.build_prompt(context, user_input)
+        # 2. LỌC TÀI LIỆU (POST-FILTERING)
+        # Thay vì ép DB lọc (dễ gây lỗi), ta lấy kết quả ra rồi tự dùng Python để lọc
+        relevant_docs = []
+        if filter_filename and filter_filename != "Tất cả":
+            for doc in raw_docs:
+                if doc.metadata.get("file_name") == filter_filename:
+                    relevant_docs.append(doc)
+        else:
+            relevant_docs = raw_docs
 
-        # llm response
-        response = self.llm.invoke(prompt)
+        response = question_answer_chain.invoke({
+            "input": user_input,
+            "chat_history": formatted_history,
+            "context": relevant_docs
+        })
 
-        return response
+        return response, relevant_docs
     
     def build_prompt(self, context: str, user_input: str) -> str:
         if is_vietnamese(user_input): # if user input is in Vietnamese, response in Vietnamese

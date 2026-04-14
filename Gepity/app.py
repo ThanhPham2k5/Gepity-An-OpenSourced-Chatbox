@@ -5,10 +5,39 @@ from datetime import datetime
 import streamlit.components.v1 as components
 from utils.helpers import img_to_base64, update_current_chat_to_history
 from core import RAG_engine, Graph_engine
-
+import uuid
 
 # SETUP & SESSIONS -------------------------------------------------------
 st.set_page_config(page_title="Gepity AI", layout="wide")
+@st.dialog("⚠️ Xác nhận xóa dữ liệu")
+def confirm_action_dialog(action_type):
+    if action_type == "history":
+        st.write("Bạn có chắc chắn muốn xóa **TOÀN BỘ** lịch sử trò chuyện? Hành động này không thể hoàn tác.")
+        if st.button("Xác nhận xóa sạch lịch sử", type="primary", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.chat_history = []
+            st.session_state.current_chat_id = None
+            st.rerun()
+            
+    elif action_type == "vector":
+        st.write("Hệ thống sẽ xóa toàn bộ tài liệu đã được băm nhỏ trong bộ nhớ Vector (FAISS).")
+        if st.button("Xác nhận giải phóng bộ nhớ", type="primary", use_container_width=True):
+            st.session_state.retriever = None
+            st.session_state.vector_store = None
+            st.session_state.last_file_key = None
+            st.session_state.uploaded_filenames = []
+            st.session_state.file_uploader_key = str(uuid.uuid4())
+            
+            if "file_stats" in st.session_state:
+                del st.session_state["file_stats"]
+
+            for chat in st.session_state.chat_history:
+                chat['retriever'] = None
+                chat['vector_store'] = None
+                chat['last_file_key'] = None
+                chat['uploaded_filenames'] = []
+            
+            st.rerun()
 
 if "rag" not in st.session_state:
     st.session_state.rag = RAG_engine()
@@ -30,6 +59,9 @@ if "chat_history" not in st.session_state:
 
 if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = None
+
+if "file_uploader_key" not in st.session_state:
+    st.session_state.file_uploader_key = str(uuid.uuid4())
 
 # LOAD CSS -------------------------------------------------------
 # Get the directory where app.py actually lives
@@ -66,8 +98,47 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.current_chat_id = None
         st.session_state.retriever = None
+        st.session_state.vector_store = None
+        st.session_state.file_uploader_key = str(uuid.uuid4())
+        if "last_file_key" in st.session_state:
+            del st.session_state["last_file_key"]
+        if "file_stats" in st.session_state:
+            del st.session_state["file_stats"]
+        if "uploaded_filenames" in st.session_state:
+            del st.session_state["uploaded_filenames"]
         st.rerun()
 
+    # Comparison Mode Toggle
+    st.toggle("So sánh vector search với hybrid search", key="comparison_mode")
+
+    # Section: Cài đặt Chunk 
+    st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
+    with st.expander("⚙️ Tùy chỉnh Chunk Parameters", expanded=False):
+        st.markdown("<span style='font-size: 0.85em; color: gray;'>Thiết lập trước khi upload tài liệu</span>", unsafe_allow_html=True)
+        
+        chunk_size = st.slider(
+            "Chunk Size (Kích thước đoạn)", 
+            min_value=100, max_value=2000, value=500, step=100,
+            help="Số lượng ký tự tối đa trong một đoạn văn bản. Càng lớn thì ngữ cảnh càng rộng nhưng tốn RAM."
+        )
+        
+        safe_max_overlap = int(chunk_size / 2)
+        current_overlap = st.session_state.get("chunk_overlap", 50)
+        safe_default_overlap = min(current_overlap, safe_max_overlap)
+
+        chunk_overlap = st.slider(
+            "Chunk Overlap (Độ trùng lặp)", 
+            min_value=0, 
+            max_value=safe_max_overlap,
+            value=safe_default_overlap, 
+            step=10,
+            help=f"Số ký tự được giữ lại. Hiện tại tối đa là {safe_max_overlap} (50% của Chunk Size)."
+        )
+
+        st.session_state.chunk_size = chunk_size
+        st.session_state.chunk_overlap = chunk_overlap
+
+    # Lịch sử trò chuyện
     st.markdown('<div class="sections-title">LỊCH SỬ TRÒ CHUYỆN</div>', unsafe_allow_html=True)
     with st.container(border=False):
         for chat in st.session_state.chat_history:
@@ -77,8 +148,39 @@ with st.sidebar:
                 st.session_state.messages = chat['messages'].copy()
                 st.session_state.current_chat_id = chat['id']
                 st.session_state.retriever = chat.get('retriever')
-                
+                st.session_state.vector_store = chat.get('vector_store')
+                st.session_state['last_file_key'] = chat.get('last_file_key')
+                st.session_state['uploaded_filenames'] = chat.get('uploaded_filenames', [])
+                st.session_state['file_uploader_key'] = chat.get('file_uploader_key') or str(uuid.uuid4())
+                if "file_stats" in st.session_state:
+                    del st.session_state["file_stats"]
+
                 st.rerun()
+
+    # Bộ lọc tài liệu
+    st.markdown('<div class="sidebar-label">Lọc tài liệu</div>', unsafe_allow_html=True)
+    filter_choice = None 
+    if "uploaded_filenames" in st.session_state and st.session_state["uploaded_filenames"]:
+        danh_sach_file = ["Tất cả"] + list(st.session_state["uploaded_filenames"])
+        filter_choice = st.selectbox(
+            "Chỉ tìm kiếm trong:",
+            options=danh_sach_file,
+            label_visibility="collapsed"
+        )
+    else:
+        st.info("Chưa có file nào.")
+    
+    # Dọn dẹp dữ liệu
+    st.divider()
+    st.markdown('<div class="sidebar-label">Quản trị dữ liệu</div>', unsafe_allow_html=True)
+    
+    col_del_1, col_del_2 = st.columns(2)
+    with col_del_1:
+        if st.button("🗑️ Xóa Chat", use_container_width=True):
+            confirm_action_dialog("history")
+    with col_del_2:
+        if st.button("📂 Xóa Docs", use_container_width=True):
+            confirm_action_dialog("vector")
 
     # Section: Hướng dẫn
     st.markdown('<div class="sidebar-label">Hướng dẫn sử dụng</div>', unsafe_allow_html=True)
@@ -143,21 +245,81 @@ with chat_container:
         is_user = msg["role"] == "user"
         bubble_class = "user-bubble" if is_user else "ai-bubble"
         name = "Bạn" if is_user else "Gepity"
-        
-        st.markdown(f"""
-            <div class="chat-row {bubble_class}-row">
-                <div class="chat-bubble {bubble_class}">
-                    <div class="bubble-info">
-                        <span class="bubble-name">{name}</span>
-                        <span class="bubble-time">{msg.get('time', '')}</span>
+        if is_user or not st.session_state.get("comparison_mode", False):
+            st.markdown(f"""
+                <div class="chat-row {bubble_class}-row">
+                    <div class="chat-bubble {bubble_class}">
+                        <div class="bubble-info">
+                            <span class="bubble-name">{name}</span>
+                            <span class="bubble-time">{msg.get('time', '')}</span>
+                        </div>
+                        <div class="bubble-content">{msg['content']}</div>
                     </div>
-                    <div class="bubble-content">{msg['content']}</div>
                 </div>
-            </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+
+            # --- NGUỒN TRÍCH DẪN (STANDARD RAG) ---
+            if not is_user and msg.get("sources"):
+                st.markdown('<div class="source-divider"></div>', unsafe_allow_html=True)
+                with st.expander("📚 Nguồn trích dẫn"):
+                    for i, doc in enumerate(msg["sources"]):
+                        file_name = doc.metadata.get('file_name', 'Tài liệu')
+                        page_num = doc.metadata.get('page', 'N/A')
+                        if isinstance(page_num, int):
+                            page_num += 1 
+                            
+                        st.markdown(f"**Nguồn {i+1} ({file_name} - Trang {page_num}):**")
+                        st.markdown(f"> {doc.page_content}")
+
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"""
+                    <div class="chat-row ai-bubble-row">
+                        <div class="chat-bubble ai-bubble">
+                            <div class="bubble-info">
+                                <span class="bubble-name">📚 Standard RAG</span>
+                                <span class="bubble-time">{msg.get('time', '')}</span>
+                            </div>
+                            <div class="bubble-content">{msg['content']}</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                if msg.get("sources"):
+                    with st.expander("📚 Nguồn trích dẫn"):
+                        for i, doc in enumerate(msg["sources"]):
+                            file_name = doc.metadata.get('file_name', 'Tài liệu')
+                            page_num = doc.metadata.get('page', 'N/A')
+                            page_num = page_num + 1 if isinstance(page_num, int) else page_num
+                            st.markdown(f"**{file_name} (Trang {page_num})**")
+                            st.markdown(f"> {doc.page_content}")
+
+            with col2:
+                hybrid_content = msg.get("hybrid_content")
+                if hybrid_content:
+                    st.markdown(f"""
+                        <div class="chat-row ai-bubble-row">
+                            <div class="chat-bubble ai-bubble">
+                                <div class="bubble-info">
+                                    <span class="bubble-name">🧠 Hybrid RAG (Vector + BM25)</span>
+                                    <span class="bubble-time">{msg.get('time', '')}</span>
+                                </div>
+                                <div class="bubble-content">{hybrid_content}</div>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                    if msg.get("hybrid_sources"):
+                        with st.expander("📚 Nguồn trích dẫn"):
+                            for i, doc in enumerate(msg["hybrid_sources"]):
+                                file_name = doc.metadata.get('file_name', 'Tài liệu')
+                                page_num = doc.metadata.get('page', 'N/A')
+                                page_num = page_num + 1 if isinstance(page_num, int) else page_num
+                                st.markdown(f"**{file_name} (Trang {page_num})**")
+                                st.markdown(f"> {doc.page_content}")
         
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
-
 # user input
 user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
 
@@ -171,21 +333,9 @@ if user_req:
 
     # get response from llm with loading spinner
     with st.spinner("Gepity đang suy nghĩ..."):
-        # basic RAG response
-        basic_response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
-
-        # graph RAG response
-        # graph_response = st.session_state.graph_engine.get_response(user_req)
-
+        response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-
-        # add llm's response to session
-        st.session_state.messages.append({
-            "role": "ai", 
-            "content": basic_response, 
-            # "content": graph_response,
-            "time": ai_time
-        }) 
+        st.session_state.messages.append({"role": "ai", "content": response, "time": ai_time}) # add llm's response to session
 
     st.rerun()
 
@@ -196,58 +346,40 @@ with st.popover("Đính kèm file", use_container_width=False):
         "Upload tài liệu",
         type=["pdf", "docx"],
         label_visibility="collapsed",
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key=st.session_state.file_uploader_key
     )
 
     if upload_file:
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
         if st.session_state.get("last_file_key") != file_key:
-            st.session_state["last_file_key"] = file_key
-
             with st.spinner("Gepity đang xử lý tài liệu..."):
-                # basic RAG processing
-                retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(upload_file)
-                st.success(f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}")
-
-                # graph RAG processing and sync to graph database
-                # with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
-                #     all_chunks = st.session_state.graph_engine.process_document(upload_file)
-                #     nodes_count = st.session_state.graph_engine.sync_to_graph(all_chunks)
-                #     st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số nodes: {nodes_count}")
+                retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
+                    upload_file, 
+                    chunk_size=st.session_state.get("chunk_size", 500), 
+                    chunk_overlap=st.session_state.get("chunk_overlap", 50)
+                )
                 st.session_state.retriever = retriever
                 st.session_state.vector_store = vector_store
+                st.session_state["last_file_key"] = file_key
+                st.session_state["uploaded_filenames"] = [f.name for f in upload_file]
+                st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}"
+            st.rerun()
+    else:
+        current_key = st.session_state.get("last_file_key")
+        
+        if current_key:
+            st.session_state.retriever = None
+            st.session_state.vector_store = None
+            del st.session_state["last_file_key"]
+            if "file_stats" in st.session_state:
+                del st.session_state["file_stats"]
+                
+            st.rerun()
 
-# # user input
-# user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
-
-# # store response into session
-# if user_req:
-#     # add user request to session
-#     current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-#     st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
-
-#     # redraw_chats()
-
-#     # get response from llm with loading spinner
-#     with st.spinner("Gepity đang suy nghĩ..."):
-#         # basic RAG response
-#         basic_response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
-
-#         # graph RAG response
-#         graph_response = st.session_state.graph_engine.get_response(user_req)
-
-#         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-
-#         # add llm's response to session
-#         st.session_state.messages.append({
-#             "role": "ai", 
-#             "basic_content": basic_response, 
-#             "content": graph_response,
-#             "time": ai_time
-#         }) 
-
-#     st.rerun()
-
+    if "file_stats" in st.session_state:
+        st.success(st.session_state["file_stats"])
+st.markdown('</div>', unsafe_allow_html=True)
 
 # JAVASCRIPT AUTO-SCROLL -------------------------------------------------------
 # only run js when there is message in session, to avoid scroll to bottom when user first open the page
@@ -269,3 +401,46 @@ if st.session_state.messages:
         }}, 300);
     </script>
     """, height=0)
+
+if user_req:
+    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
+    
+    with st.spinner("Gepity đang suy nghĩ..."):
+        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+        if st.session_state.get("comparison_mode", False):
+            # --- Cột trái: Standard RAG (Chỉ dùng Vector FAISS) ---
+            # Ta lấy trực tiếp từ vector_store, bỏ qua BM25
+            pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3}) if st.session_state.vector_store else None
+            res_standard, sources_standard = st.session_state.rag.get_response(
+                user_req, pure_vector_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
+            )
+            
+            # --- Cột phải: Hybrid RAG (Ensemble FAISS + BM25) ---
+            # st.session_state.retriever hiện tại chính là bản đã trộn (Ensemble)
+            res_hybrid, sources_hybrid = st.session_state.rag.get_response(
+                user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
+            )
+            
+            st.session_state.messages.append({
+                "role": "ai", 
+                "content": res_standard,                
+                "sources": sources_standard, 
+                "hybrid_content": res_hybrid,           
+                "hybrid_sources": sources_hybrid,       
+                "time": ai_time
+            })
+            
+        else:
+            response, sources = st.session_state.rag.get_response(
+                user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
+            )
+            
+            st.session_state.messages.append({
+                "role": "ai", 
+                "content": response, 
+                "sources": sources,
+                "time": ai_time
+            })
+
+    st.rerun()

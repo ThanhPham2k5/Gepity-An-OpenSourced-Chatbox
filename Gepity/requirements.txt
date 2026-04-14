@@ -26,5 +26,8 @@ docx2txt
 pypdf
 reportlab
 
+# Keyword Search
+rank_bm25
+
 # Testing
 pytest
