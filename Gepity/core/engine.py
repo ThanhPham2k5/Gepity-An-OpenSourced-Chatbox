@@ -6,6 +6,12 @@ from utils import is_vietnamese
 from datetime import datetime
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
+from langchain_classic.chains.history_aware_retriever import create_history_aware_retriever
+from langchain_classic.chains.retrieval import create_retrieval_chain
+from langchain_classic.chains.combine_documents.stuff import create_stuff_documents_chain
+from langchain_core.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages.human import HumanMessage
+from langchain_core.messages.ai import AIMessage
 class RAG_engine:
     def __init__(self, model_name="qwen2.5:7b"):
         self.llm = OllamaLLM(model=model_name, base_url="http://localhost:11434")
@@ -43,13 +49,59 @@ class RAG_engine:
 
         return ensemble_retriever, vector_store, len(all_chunks), len(all_docs)
        
-    def get_response(self, user_input, retriever, filter_filename=None):
+    def get_response(self, user_input, retriever, filter_filename=None, chat_history=None):
+        # Xử lý lịch sử trò chuyện
+        formatted_history = []
+        if chat_history:
+            for msg in chat_history:
+                if msg["role"] == "user":
+                    formatted_history.append(HumanMessage(content=msg["content"]))
+                elif msg["role"] == "ai":
+                    formatted_history.append(AIMessage(content=msg["content"]))
+
         if retriever is None:
-            return self.llm.invoke(user_input), None
+            if formatted_history:
+                prompt_chitchat = ChatPromptTemplate.from_messages([
+                    ("system", "Bạn là một trợ lý AI hữu ích."),
+                    MessagesPlaceholder(variable_name="chat_history"),
+                    ("human", "{input}"),
+                ])
+                chain_chitchat = prompt_chitchat | self.llm
+                return chain_chitchat.invoke({"input": user_input, "chat_history": formatted_history}).content, None
+            else:
+                return self.llm.invoke(user_input).content, None
+
+        # Conservation RAG
+        contextualize_q_system_prompt = (
+            "Dựa trên lịch sử trò chuyện và câu hỏi mới nhất của người dùng, "
+            "có thể câu hỏi mới đang tham chiếu đến ngữ cảnh trong lịch sử trò chuyện. "
+            "Hãy viết lại câu hỏi thành một câu hỏi độc lập (standalone question) có thể tự hiểu được "
+            "mà không cần lịch sử trò chuyện. "
+            "KHÔNG trả lời câu hỏi, chỉ viết lại nếu cần thiết, nếu không thì trả về nguyên bản."
+        )
+        contextualize_q_prompt = ChatPromptTemplate.from_messages([
+            ("system", contextualize_q_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ])
+        history_aware_retriever = create_history_aware_retriever(
+            self.llm, retriever, contextualize_q_prompt
+        )
+        qa_system_prompt = (
+            "Bạn là trợ lý giải đáp thắc mắc. Sử dụng các tài liệu được cung cấp dưới đây để trả lời câu hỏi.\n\n"
+            "{context}"
+        )
+        qa_prompt = ChatPromptTemplate.from_messages([
+            ("system", qa_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ])
+        question_answer_chain = create_stuff_documents_chain(self.llm, qa_prompt)
+        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
         # 1. GỌI HÀM TRUY XUẤT CHUẨN CỦA LANGCHAIN
         # Hàm invoke() này chạy an toàn cho TẤT CẢ các loại Retriever (Vector, BM25, Ensemble)
-        raw_docs = retriever.invoke(user_input)
+        raw_docs = history_aware_retriever.invoke({"input": user_input, "chat_history": formatted_history})
 
         # 2. LỌC TÀI LIỆU (POST-FILTERING)
         # Thay vì ép DB lọc (dễ gây lỗi), ta lấy kết quả ra rồi tự dùng Python để lọc
@@ -61,9 +113,11 @@ class RAG_engine:
         else:
             relevant_docs = raw_docs
 
-        context = "\n\n".join([doc.page_content for doc in relevant_docs])
-        prompt = self.build_prompt(context, user_input)
-        response = self.llm.invoke(prompt)
+        response = question_answer_chain.invoke({
+            "input": user_input,
+            "chat_history": formatted_history,
+            "context": relevant_docs
+        })
 
         return response, relevant_docs
     

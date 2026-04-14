@@ -394,13 +394,13 @@ if user_req:
             # Ta lấy trực tiếp từ vector_store, bỏ qua BM25
             pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3}) if st.session_state.vector_store else None
             res_standard, sources_standard = st.session_state.rag.get_response(
-                user_req, pure_vector_retriever, filter_filename=filter_choice
+                user_req, pure_vector_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
             
             # --- Cột phải: Hybrid RAG (Ensemble FAISS + BM25) ---
             # st.session_state.retriever hiện tại chính là bản đã trộn (Ensemble)
             res_hybrid, sources_hybrid = st.session_state.rag.get_response(
-                user_req, st.session_state.retriever, filter_filename=filter_choice
+                user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
             
             st.session_state.messages.append({
@@ -414,7 +414,7 @@ if user_req:
             
         else:
             response, sources = st.session_state.rag.get_response(
-                user_req, st.session_state.retriever, filter_filename=filter_choice
+                user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
             
             st.session_state.messages.append({
