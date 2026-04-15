@@ -113,7 +113,7 @@ with st.sidebar:
 
     # Section: Cài đặt Chunk 
     st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
-    with st.expander("⚙️ Tùy chỉnh Chunk Parameters", expanded=False):
+    with st.expander("Tùy chỉnh Chunk Parameters", expanded=False):
         st.markdown("<span style='font-size: 0.85em; color: gray;'>Thiết lập trước khi upload tài liệu</span>", unsafe_allow_html=True)
         
         chunk_size = st.slider(
@@ -242,18 +242,19 @@ st.markdown(f"""
 chat_container = st.container()
 with chat_container:
     for msg in st.session_state.messages:
-        is_user = msg["role"] == "user"
-        bubble_class = "user-bubble" if is_user else "ai-bubble"
+        is_user = msg["role"] == 'user'
+        css_class = 'user_bubble' if is_user else 'ai_bubble'
+        avatar = user_bubble if is_user else ai_bubble
         name = "Bạn" if is_user else "Gepity"
+        time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
         if is_user or not st.session_state.get("comparison_mode", False):
             st.markdown(f"""
-                <div class="chat-row {bubble_class}-row">
-                    <div class="chat-bubble {bubble_class}">
-                        <div class="bubble-info">
-                            <span class="bubble-name">{name}</span>
-                            <span class="bubble-time">{msg.get('time', '')}</span>
-                        </div>
-                        <div class="bubble-content">{msg['content']}</div>
+                <div class="bubble-header-{css_class}">
+                    <img src="data:image/png;base64,{avatar}" class="{css_class}-ico"/>
+                    <div class="bubble-answer-{css_class}">
+                        <span class="bubble-name">{name}</span>
+                        <div class="{css_class}">{msg["content"]}</div>
+                        <span class="bubble-time">{time_str}</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
