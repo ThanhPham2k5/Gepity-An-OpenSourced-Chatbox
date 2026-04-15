@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import os
+from urllib import response
 
 from gliner import GLiNER
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -46,7 +47,8 @@ class Graph_engine:
             - 'summary': 1-2 câu mô tả mối liên hệ giữa các thực thể này.
             - 'full_content': Đoạn văn phân tích chi tiết vai trò của các thực thể và lý do chúng được xếp chung vào một cụm.
             - Output: BẮT BUỘC là JSON Object bằng Tiếng Việt: {{"title": "", "summary": "", "full_content": ""}} 
-            Tuyệt đối không dùng markdown block."""),
+            Tuyệt đối không dùng markdown block.
+            Mọi trường(field) đều BẮT BUỘC phải có."""),
             ("human", "Danh sách thực thể:\n{community_data}")
         ])
 
@@ -57,7 +59,8 @@ class Graph_engine:
             - 'summary': 1-2 câu tóm tắt điểm giao thoa lớn nhất giữa các cụm con.
             - 'full_content': Đoạn văn phân tích bức tranh toàn cảnh, cách các cụm con này ghép lại để tạo thành một chủ đề lớn hơn.
             - Output: BẮT BUỘC là JSON Object bằng Tiếng Việt: {{"title": "", "summary": "", "full_content": ""}}
-            Tuyệt đối không dùng markdown block."""),
+            Tuyệt đối không dùng markdown block.
+            Mọi trường(field) đều BẮT BUỘC phải có."""),
             ("human", "Thông tin các cụm con:\n{community_data}")
         ])
 
@@ -107,7 +110,7 @@ class Graph_engine:
             print(f"Đang xử lý song song {total_chunks} chunks...")
 
         # Use ThreadPoolExecutor with as_completed for real-time tracking
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             # Submit all tasks
             future_to_chunk = {executor.submit(self.process_single_chunk, chunk): chunk for chunk in all_chunks}
             
@@ -122,7 +125,7 @@ class Graph_engine:
                 else:
                     # Update console
                     if completed_count % 10 == 0:
-                        print(f"Progress: [{completed_count}/{total_chunks}] - {progress_pct:.1%}", flush=True)
+                        print(f"Tiến độ: [{completed_count}/{total_chunks}] - {progress_pct:.1%}", flush=True)
 
                 # Optional: Catch errors from the thread
                 try:
@@ -179,43 +182,51 @@ class Graph_engine:
             return
         
         if in_streamlit:
+            status_text = st.empty()
             st.info("Bắt đầu xây dựng Communities...")
         else:
             print("Bắt đầu xây dựng Communities...")
 
         project_name = "knowledge_graph_projection"
 
-        # 1. Dọn dẹp projection cũ nếu có
+        # Dọn dẹp projection cũ nếu có
         self.graph.query(f"CALL gds.graph.drop('{project_name}', false) YIELD graphName")
 
-        # 2. Tạo In-Memory Graph (Chỉ lấy Entity và quan hệ RELATES_TO)
+        # Tạo In-Memory Graph (Chỉ lấy Entity và quan hệ RELATES_TO)
         project_cypher = f"""
         CALL gds.graph.project(
             '{project_name}',
             'Entity',
             {{
                 RELATES_TO: {{
-                    orientation: 'UNDIRECTED'
+                    orientation: 'UNDIRECTED',
+                    properties: {{
+                        weight: {{
+                            property: 'weight',
+                            defaultValue: 1.0
+                        }}
+                    }}
                 }}
             }}
         )
         """
         self.graph.query(project_cypher)
 
-        # 3. Chạy Louvain và Stream kết quả thẳng về Python
-        # Hàm này tự động gom nhóm các Entity có cùng communityId thành các mảng
-        louvain_cypher = f"""
-        CALL gds.louvain.stream('{project_name}')
+        # Chạy leiden và Stream kết quả thẳng về Python
+        leiden_cypher = f"""
+        CALL gds.leiden.stream('{project_name}', {{
+            relationshipWeightProperty: 'weight',
+            includeIntermediateCommunities: false
+        }})
         YIELD nodeId, communityId
         WITH gds.util.asNode(nodeId) AS e, communityId
         RETURN communityId, 
                collect({{entity_name: e.name, entity_desc: e.description}}) AS cluster_entities
         ORDER BY size(cluster_entities) DESC
         """
-        
-        results = self.graph.query(louvain_cypher)
+        results = self.graph.query(leiden_cypher)
 
-        # 4. Xóa In-Memory Graph để giải phóng RAM
+        # Xóa In-Memory Graph để giải phóng RAM
         self.graph.query(f"CALL gds.graph.drop('{project_name}', false) YIELD graphName")
 
         if not results:
@@ -225,69 +236,53 @@ class Graph_engine:
                 print("Không tìm thấy cộng đồng nào. Vui lòng kiểm tra lại dữ liệu Entity.")
             return
 
-        # 5. Xử lý và tạo Community Nodes (Level 0)
-        if in_streamlit:
-            progress_bar = st.progress(0)
+        # Xử lý và tạo Community Nodes (Level 0)  
         level_0_community_ids = []
 
-        # Trong GDS, mỗi record đã là một cụm (community) hoàn chỉnh, không cần chia batch ảo nữa.
-        for i, record in enumerate(results):
-            community_group_id = record['communityId']
-            cluster = record['cluster_entities']
+        # parallelize llm call
+        processed_communities = []
+
+        # for record in results:
+        #     result = self.process_community_worker(record, 0)
+        #     if result:
+        #         processed_communities.append(result)
+        #         msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
+        #         if in_streamlit:
+        #             status_text.text(msg)
+        #         else:
+        #             print(msg)
+
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_complete = {executor.submit(self.process_community_worker, rec, 0): rec for rec in results}
             
-            # Bỏ qua các cụm quá nhỏ
-            if len(cluster) < 5:
-                continue
-            
-            weight = len(cluster)
-            level = 0
-            community_id = f"COMM_L{level}_{community_group_id}"
-            level_0_community_ids.append(community_id)
+            for future in as_completed(future_to_complete):
+                res = future.result()
+                if res:
+                    processed_communities.append(res)
+                    msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
+                    if in_streamlit:
+                        status_text.text(msg)
+                    else:
+                        print(msg, flush=True)
 
-            # Chuẩn bị dữ liệu cho LLM
-            context_str = "\n".join([f"- {c['entity_name']}: {c['entity_desc']}" for c in cluster])
-
-            try:
-                # LLM tạo Title, Summary, Full Content
-                response = self.leaf_chain.invoke({"community_data": context_str})
-                community_info = json.loads(response.content)
-                
-                title = community_info.get("title", f"Community {community_group_id}")
-                summary = community_info.get("summary", "Không có tóm tắt")
-                full_content = community_info.get("full_content", "Không có nội dung")
-
-                # Lưu vào Neo4j
-                save_cypher = """
-                MERGE (c:Community {id: $community_id})
-                SET c.title = $title,
-                    c.level = $level,
-                    c.summary = $summary,
-                    c.full_content = $full_content,
-                    c.weight = $weight
-                
-                WITH c
-                UNWIND $entity_names AS e_name
-                MATCH (e:Entity {name: e_name})
-                MERGE (e)-[:IN_COMMUNITY]->(c)
-                """
-                
-                entity_names = [c['entity_name'] for c in cluster]
-                
-                self.graph.query(save_cypher, {
-                    "community_id": community_id,
-                    "title": title,
-                    "level": level,
-                    "summary": summary,
-                    "full_content": full_content,
-                    "weight": weight,
-                    "entity_names": entity_names
-                })
-
-            except Exception as e:
-                print(f"Lỗi khi tạo community {community_id}: {e}")
-            
-            if in_streamlit:
-                progress_bar.progress((i + 1) / len(results))
+        # single batch query
+        if processed_communities:
+            save_batch_cypher = """
+            UNWIND $data AS item
+            MERGE (c:Community {id: item.community_id})
+            SET c.title = item.title,
+                c.level = item.level,
+                c.summary = item.summary,
+                c.full_content = item.full_content,
+                c.weight = item.weight
+            WITH c, item
+            UNWIND item.entity_names AS e_name
+            MATCH (e:Entity {name: e_name})
+            MERGE (e)-[:IN_COMMUNITY]->(c)
+            """
+            self.graph.query(save_batch_cypher, {"data": processed_communities})
+        level_0_community_ids = [c['community_id'] for c in processed_communities]
 
         # Gọi hàm tạo Level 1 như cũ
         if in_streamlit:
@@ -295,18 +290,17 @@ class Graph_engine:
         else:
             print("Đang xây dựng Parent Communities (Level 1)...")
         if len(level_0_community_ids) > 1:
-            self._build_parent_communities(level_0_community_ids)
+            self.build_parent_communities(level_0_community_ids)
 
         if in_streamlit:
-            st.success("Hoàn tất xây dựng cấu trúc Community GraphRAG!")
+            st.success("Hoàn tất xây dựng Community!")
         else:
-            print("Hoàn tất xây dựng cấu trúc Community GraphRAG!")
+            print("Hoàn tất xây dựng Community!")
 
 
-    def _build_parent_communities(self, child_community_ids, current_level=1):
+    def build_parent_communities(self, child_community_ids, current_level=1):
         """
-        Xây dựng Parent Communities theo từng batch để tránh quá tải Context Window của LLM.
-        Nếu tạo ra nhiều hơn 1 Parent Community, tự động đệ quy lên Level tiếp theo.
+        Xây dựng Parent Communities bằng cách gom các cụm con và tóm tắt song song.
         """
         in_streamlit = _is_running_in_streamlit()
 
@@ -328,69 +322,57 @@ class Graph_engine:
 
         # Nhóm các child communities thành các batch
         batch_size = 5 
-        parent_community_ids = []
+        batches = [children[i : i + batch_size] for i in range(0, len(children), batch_size)]
+        
+        parent_results = []
 
-        if in_streamlit:
-            progress_bar = st.progress(0)
+        # for i in range(0, len(children), batch_size):
+        #     batch = children[i : i + batch_size]
+        #     result = self.summarize_parent_batch(batch, current_level, i)
+        #     if result:
+        #         parent_results.append(result)
 
-        for i in range(0, len(children), batch_size):
-            batch = children[i : i + batch_size]
+        # parallelize llm call
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_batch = {
+                executor.submit(self.summarize_parent_batch, batch, current_level, i): i 
+                for i, batch in enumerate(batches)
+            }
             
-            parent_id = f"COMM_L{current_level}_{i}"
-            parent_community_ids.append(parent_id)
-            weight = len(batch)
-            
-            # Chuẩn bị context từ các cụm con
-            context_str = "\n".join([f"- Cụm {c['title']}: {c['summary']}" for c in batch])
-            
-            try:
-                # Gọi LLM để tổng hợp
-                response = self.parent_chain.invoke({"community_data": context_str})
-                parent_info = json.loads(response.content)
-                
-                # Lưu Parent Community và tạo link PARENT_COMMUNITY xuống các cụm con
-                parent_cypher = """
-                MERGE (p:Community {id: $parent_id})
-                SET p.title = $title,
-                    p.level = $level,
-                    p.summary = $summary,
-                    p.full_content = $full_content,
-                    p.weight = $weight
-                
-                WITH p
-                UNWIND $child_ids AS c_id
-                MATCH (c:Community {id: c_id})
-                MERGE (c)-[:PARENT_COMMUNITY]->(p)
-                """
-                
-                batch_ids = [c['id'] for c in batch]
-                self.graph.query(parent_cypher, {
-                    "parent_id": parent_id,
-                    "title": parent_info.get("title", f"Tổng hợp Level {current_level}"),
-                    "level": current_level,
-                    "summary": parent_info.get("summary", ""),
-                    "full_content": parent_info.get("full_content", ""),
-                    "weight": weight,
-                    "child_ids": batch_ids
-                })
+            for future in as_completed(future_to_batch):
+                res = future.result()
+                if res:
+                    parent_results.append(res)
 
-            except Exception as e:
-                print(f"Lỗi khi tạo parent community {parent_id}: {e}")
-            
-            if in_streamlit:
-                progress_bar.progress(min((i + batch_size) / len(children), 1.0))
+        # single batch query
+        if parent_results:
+            save_parent_cypher = """
+            UNWIND $data AS item
+            MERGE (p:Community {id: item.parent_id})
+            SET p.title = item.title,
+                p.level = item.level,
+                p.summary = item.summary,
+                p.full_content = item.full_content,
+                p.weight = item.weight
+            WITH p, item
+            UNWIND item.child_ids AS c_id
+            MATCH (c:Community {id: c_id})
+            MERGE (c)-[:PARENT_COMMUNITY]->(p)
+            """
+            self.graph.query(save_parent_cypher, {"data": parent_results})
 
-        # --- ĐỆ QUY (RECURSION) ---
-        # Nếu chúng ta tạo ra nhiều hơn 1 Parent Community ở level này, 
-        # tiếp tục gom chúng lại thành Level cao hơn cho đến khi chỉ còn 1 Master Node.
-        if len(parent_community_ids) > 1:
-            self._build_parent_communities(parent_community_ids, current_level=current_level + 1)
+        # Recursive: if there's more than one parent, continue to higher level
+        new_parent_ids = [p['parent_id'] for p in parent_results]
+        
+        if len(new_parent_ids) > 1:
+            self.build_parent_communities(new_parent_ids, current_level=current_level + 1)
         else:
+            msg = f"Đã đạt đến Root Community ở Level {current_level}!"
             if in_streamlit:
-                st.success(f"Đã đạt đến Root Community ở Level {current_level}!")
+                st.success(msg)
             else:
-                print(f"Đã đạt đến Root Community ở Level {current_level}!")
-    
+                print(msg)
+        
     def get_response(self, user_input):
 
         if not self.graph:
@@ -475,8 +457,9 @@ class Graph_engine:
         
     def process_single_chunk(self, chunk):
         # Prepare Document and Chunk Data
-        doc_name = chunk.metadata.get("filename", "unknown")
         doc_source = chunk.metadata.get("source", "unknown")
+        doc_name = chunk.metadata.get("filename") or os.path.basename(doc_source)
+
         chunk_text = chunk.page_content
         chunk_id = hashlib.md5(chunk_text.encode('utf-8')).hexdigest()
 
@@ -542,3 +525,62 @@ class Graph_engine:
                 session.execute_write(write_transaction)
         except Exception as e:
             print(f"Lỗi chunk (Đã rollback): {e}", flush=True)
+
+    def process_community_worker(self, record, level):
+        community_group_id = record['communityId']
+        cluster = record['cluster_entities']
+        
+        # Bỏ qua các cụm quá nhỏ
+        if len(cluster) < 4:
+            return None
+        
+        community_id = f"COMM_L{level}_{community_group_id}"
+
+        # Chuẩn bị dữ liệu cho LLM
+        context_str = "\n".join([f"- {c['entity_name']}: {c['entity_desc']}" for c in cluster])
+
+        try:
+            chain = self.leaf_chain if level == 0 else self.parent_chain
+            response = chain.invoke({"community_data": context_str})
+
+            # clean up response
+            content = response.content.replace("```json", "").replace("```", "").strip()
+            info = json.loads(content)
+
+            return {
+                "community_id": community_id,
+                "title": info.get("title", f"Cụm {community_group_id}"),
+                "summary": info.get("summary", ""),
+                "full_content": info.get("full_content", ""),
+                "weight": len(cluster),
+                "entity_names": [c['entity_name'] for c in cluster],
+                "level": level
+            }
+        except Exception as e:
+            print(f"Lỗi LLM tại community {community_id}: {e}", flush=True)
+            return None
+    
+    def summarize_parent_batch(self, batch, level, batch_idx):
+            """Hàm hỗ trợ gọi LLM tóm tắt cho một nhóm cụm con"""
+            parent_id = f"COMM_L{level}_{batch_idx}"
+            context_str = "\n".join([f"- Cụm {c['title']}: {c['summary']}" for c in batch])
+
+            try:
+                response = self.parent_chain.invoke({"community_data": context_str})
+                
+                # clean up
+                content = response.content.replace("```json", "").replace("```", "").strip()
+                parent_info = json.loads(content)
+                
+                return {
+                    "parent_id": parent_id,
+                    "title": parent_info.get("title", f"Tổng hợp Level {level}"),
+                    "level": level,
+                    "summary": parent_info.get("summary", ""),
+                    "full_content": parent_info.get("full_content", ""),
+                    "weight": len(batch),
+                    "child_ids": [c['id'] for c in batch]
+                }
+            except Exception as e:
+                print(f"Lỗi khi tóm tắt Parent Community {parent_id}: {e}", flush=True)
+                return None

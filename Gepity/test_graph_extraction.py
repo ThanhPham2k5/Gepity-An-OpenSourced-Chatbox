@@ -8,7 +8,7 @@ def test_run():
     
     # Load test file
     print("--- Đang load file ---")
-    loader = PyPDFLoader("../proceduralSceneGeneration.pdf")
+    loader = PyPDFLoader("../LAB_01_Software Requirements Specification.pdf")
     documents = loader.load()
 
     # Get the chunks
