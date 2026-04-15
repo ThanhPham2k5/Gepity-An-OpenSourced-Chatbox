@@ -393,49 +393,36 @@ if user_req:
     with st.spinner("Gepity đang suy nghĩ..."):
         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
 
-        # Xử lý bộ lọc
-        vector_search_kwargs = {"k": 4} # Lấy top 4 tài liệu
+        vector_search_kwargs = {"k": 3} 
         if filter_choice and filter_choice != "Tất cả":
-            # Gài thêm lệnh bắt buộc FAISS chỉ tìm trong file được chọn
             vector_search_kwargs["filter"] = {"file_name": filter_choice}
 
-        # 1. Bơm bộ lọc mới cho pure_vector_retriever (Dành cho Standard RAG)
+        pure_vector_retriever = None
         if st.session_state.vector_store:
             pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs=vector_search_kwargs)
-        else:
-            pure_vector_retriever = None
 
-        # 2. Hack vào bụng EnsembleRetriever (Hybrid RAG) để bơm bộ lọc
         if st.session_state.retriever:
             for sub_retriever in st.session_state.retriever.retrievers:
                 if hasattr(sub_retriever, "search_kwargs"): 
-                    # Đây chính là ông FAISS đang nấp bên trong, gài filter cho ổng!
                     sub_retriever.search_kwargs = vector_search_kwargs
                 elif hasattr(sub_retriever, "k"): 
-                    # Đây là ông BM25. Vì ổng không hỗ trợ pre-filter, ta phải nới lỏng
-                    # cho ổng lấy 15 đoạn về. Lát nữa Python Post-Filter sẽ tự cắt tỉa những file sai.
                     sub_retriever.k = 15
 
         if st.session_state.get("comparison_mode", False):
-            # --- Cột trái: Standard RAG (Chỉ dùng Vector FAISS) ---
-            # Ta lấy trực tiếp từ vector_store, bỏ qua BM25
-            pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3}) if st.session_state.vector_store else None
+            
             res_standard, sources_standard = st.session_state.rag.get_response(
                 user_req, pure_vector_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
-            
-            # --- Cột phải: Hybrid RAG (Ensemble FAISS + BM25) ---
-            # st.session_state.retriever hiện tại chính là bản đã trộn (Ensemble)
             res_hybrid, sources_hybrid = st.session_state.rag.get_response(
                 user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
             
             st.session_state.messages.append({
-                "role": "ai", 
-                "content": res_standard,                
-                "sources": sources_standard, 
-                "hybrid_content": res_hybrid,           
-                "hybrid_sources": sources_hybrid,       
+                "role": "ai",
+                "content": res_standard,
+                "sources": sources_standard,
+                "hybrid_content": res_hybrid,
+                "hybrid_sources": sources_hybrid,
                 "time": ai_time
             })
             
@@ -443,12 +430,6 @@ if user_req:
             response, sources = st.session_state.rag.get_response(
                 user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
-            
-            st.session_state.messages.append({
-                "role": "ai", 
-                "content": response, 
-                "sources": sources,
-                "time": ai_time
-            })
+            st.session_state.messages.append({"role": "ai", "content": response, "sources": sources, "time": ai_time})
 
     st.rerun()
