@@ -32,6 +32,7 @@ def get_vector_from_database(embedder) -> Neo4jVector | None:
     uri = os.getenv("NEO4J_URI")
     user = os.getenv("NEO4J_USERNAME")
     pwd = os.getenv("NEO4J_PASSWORD")
+    name = os.getenv("NEO4J_DATABASENAME")
 
     try:
         vector = Neo4jVector.from_existing_graph(
@@ -44,7 +45,7 @@ def get_vector_from_database(embedder) -> Neo4jVector | None:
                     url=uri, 
                     username=user, 
                     password=pwd, 
-                    database="7a0ac107",
+                    database=name,
         )
 
         return vector

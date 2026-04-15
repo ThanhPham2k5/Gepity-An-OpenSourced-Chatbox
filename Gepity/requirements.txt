@@ -31,3 +31,9 @@ rank_bm25
 
 # Testing
 pytest
+
+#NER
+gliner
+
+#NLP
+nltk
