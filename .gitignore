@@ -15,3 +15,6 @@ Gepity/faiss_index/
 
 # IDE
 .vscode/
+
+# Env file
+.env

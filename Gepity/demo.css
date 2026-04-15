@@ -1,0 +1,410 @@
+/*========================================================
+   1. SIDEBAR CONFIGURATION
+========================================================*/
+section[data-testid="stSidebar"] {
+  background-color: #2c2f33;
+  color: #ffffff;
+}
+
+/* Logo và Branding */
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+.logo-box {
+  background-color: #007bff;
+  color: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+  font-size: 20px;
+}
+.logo-text {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.logo-sub {
+  font-size: 13px;
+  opacity: 0.6;
+  margin-bottom: 20px;
+}
+
+/* Các tiêu đề mục */
+.sidebar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  opacity: 0.5;
+  margin-top: 25px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Hướng dẫn sử dụng */
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.step-num {
+  background-color: #007bff;
+  color: white;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 12px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+/* Cấu hình Model */
+.config-card {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.config-key {
+  font-size: 11px;
+  opacity: 0.6;
+}
+.config-val {
+  font-size: 14px;
+  font-weight: 500;
+}
+.status-online {
+  color: #49de80;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  background-color: #49de80;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #49de80;
+}
+
+/* 1. Nút bấm Cuộc trò chuyện mới (Primary) */
+button[kind="primary"] {
+  width: 100% !important;
+  background-color: #007bff !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 10px !important;
+  font-weight: 600 !important;
+  transition: all 0.3s ease !important;
+}
+
+button[kind="primary"]:hover {
+  background-color: #0056b3 !important;
+}
+
+/* 2. Nút bấm Lịch sử trò chuyện (Secondary trong Sidebar) */
+section[data-testid="stSidebar"] button[kind="secondary"] {
+  width: 100% !important;
+  background-color: transparent !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  border: none !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+  padding: 8px 12px !important;
+  font-weight: 400 !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease;
+}
+
+section[data-testid="stSidebar"] button[kind="secondary"]:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+/*========================================================
+   2. MAIN AREA CONFIGURATION
+========================================================*/
+/* Xóa Header mặc định */
+header[data-testid="stHeader"] {
+  display: none !important;
+}
+
+/* Container chính */
+div[data-testid="stMainBlockContainer"] {
+  padding-top: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-bottom: 0px !important;
+  max-width: 100% !important;
+}
+
+.stApp {
+  background-color: #f8f9fa !important;
+}
+
+/* Header Tùy Chỉnh */
+section.stMain
+  div.stMainBlockContainer
+  div[data-testid="stVerticalBlockBorderWrapper"]
+  > div
+  > div.stVerticalBlock
+  > div:nth-of-type(2) {
+  margin-top: -15px;
+}
+
+.main-header {
+  background: #ffffff;
+  border-bottom: 1px solid #dee2e6;
+  padding: 1.5rem 5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 99;
+  margin-bottom: 2rem;
+}
+
+.header-left-main {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #212529;
+}
+.header-left-sub {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 123, 255, 0.08);
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 123, 255, 0.2);
+}
+.header-status-dot {
+  width: 10px;
+  height: 10px;
+  background-color: #007bff;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+.header-status-text {
+  color: #007bff;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* File Uploader (Màu Amber #FFC107) */
+div[data-testid="stFileUploader"] button {
+  background-color: #ffc107 !important;
+  color: #212529 !important;
+  border: none !important;
+  font-weight: 600 !important;
+  padding: 8px !important;
+}
+
+div[data-testid="stFileUploaderDropzone"] {
+  border: 2px dashed #ffc107 !important;
+  background-color: rgba(255, 193, 7, 0.03) !important;
+  border-radius: 12px !important;
+}
+
+/* Chat Bubbles */
+.chat-row {
+  display: flex;
+  margin-bottom: 20px;
+  padding: 0 5rem;
+}
+.user-bubble-row {
+  justify-content: flex-end;
+}
+.ai-bubble-row {
+  justify-content: flex-start;
+}
+
+div[data-testid="column"] .chat-row {
+  padding: 0 !important;
+}
+
+.chat-bubble {
+  max-width: 70%;
+  padding: 14px 18px;
+  border-radius: 15px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+.user-bubble {
+  background-color: #007bff;
+  color: #ffffff;
+  border-bottom-right-radius: 2px;
+}
+.ai-bubble {
+  background-color: #ffffff;
+  color: #212529;
+  border: 1px solid #dee2e6;
+  border-bottom-left-radius: 2px;
+}
+
+.bubble-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+.bubble-name {
+  font-weight: 700;
+}
+.bubble-content {
+  line-height: 1.5;
+}
+
+/*========================================================
+   3. CHAT INPUT & ATTACHMENT HACK (GEMINI STYLE)
+========================================================*/
+/* Vùng chứa dưới đáy */
+div[data-testid="stBottomBlockContainer"] {
+  background-color: #f8f9fa !important;
+  padding-bottom: 25px !important;
+  padding-right: 14rem !important;
+}
+
+/* Lớp vỏ của khung chat */
+
+textarea[data-testid="stChatInputTextArea"] {
+  background-color: transparent !important;
+  color: #212529 !important;
+}
+
+/* HACK: Nút Popover Đính kèm (Gắn cố định vào trong khung chat) */
+.chat-input-container-anchor + div {
+  position: fixed;
+  bottom: 40px !important;
+  left: calc(244px + 5rem + 15px) !important;
+  z-index: 99999;
+}
+
+.chat-input-container-anchor + div button {
+  border-radius: 50% !important;
+  width: 38px !important;
+  height: 38px !important;
+  padding: 0 !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-size: 1.2rem !important;
+  color: #6c757d !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+.chat-input-container-anchor + div button:hover {
+  background-color: rgba(0, 123, 255, 0.1) !important;
+  color: #007bff !important;
+}
+
+div[data-testid="stVerticalBlock"] {
+  position: static !important;
+  align-items: center;
+  justify-content: center;
+}
+
+div[data-testid="stHorizontalBlock"] {
+  width: 100% !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  width: 100% !important;
+}
+
+section[data-testid="stSidebar"]
+  div[data-testid="stCheckbox"]
+  label[data-baseweb="checkbox"]
+  > div:last-child {
+  color: #ffffff !important;
+}
+
+div[data-testid="stPopover"] {
+  position: absolute !important;
+  right: 80px !important;
+  bottom: 26px !important;
+  z-index: 999999 !important;
+  height: 40px;
+}
+
+div[data-testid="stFileUploaderDeleteBtn"] {
+  width: 40px !important;
+  height: 40px !important;
+}
+
+section[data-testid="stSidebar"]
+  div[data-testid="stSidebarContent"]
+  div.stElementContainer
+  div.stAlert
+  > div {
+  color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/*========================================================
+   4. CITATIONS & EXPANDER (Nguồn trích dẫn)
+========================================================*/
+.source-divider {
+  border-top: 1px dashed #dee2e6;
+  margin: 15px 5rem 10px 5rem;
+}
+
+/* Bỏ căn lề đường phân cách khi ở chế độ cột so sánh */
+div[data-testid="column"] .source-divider {
+  margin: 15px 0 10px 0 !important;
+}
+
+section[data-testid="stSidebar"] div[data-testid="stExpander"] {
+  width: 100% !important;
+}
+
+/* Khung Expander (Xem nguồn) */
+div[data-testid="stExpander"] {
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  background-color: #ffffff !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  width: 74% !important;
+}
+
+div[data-testid="stExpander"] summary {
+  padding: 10px 15px !important;
+  color: rgb(33, 37, 41) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+}
+
+/* Đoạn text trích dẫn (Blockquote) */
+div[data-testid="stExpanderDetails"] blockquote {
+  border-left: 4px solid #ffc107 !important;
+  background-color: #f8f9fa;
+  padding: 10px 15px;
+  margin-bottom: 15px;
+  font-size: 0.85rem;
+  color: #495057;
+  border-radius: 0 4px 4px 0;
+}
