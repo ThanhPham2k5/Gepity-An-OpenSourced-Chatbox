@@ -1,11 +1,9 @@
-from core.engine import Graph_engine
+from core import Graph_engine
 from core.processor import split_docs_into_chunks
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 def test_run():
     # Initialize your engine
-    # (Ensure you load GLiNER in your __init__)
     engine = Graph_engine()
     
     # Load test file
