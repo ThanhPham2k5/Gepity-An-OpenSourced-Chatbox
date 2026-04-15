@@ -13,11 +13,11 @@ from langchain_core.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from database import get_graph_connection, get_vector_from_database
-from langchain_experimental.graph_transformers import LLMGraphTransformer
+# from langchain_experimental.graph_transformers import LLMGraphTransformer
 import streamlit as st
 
 class RAG_engine:
-    def __init__(self, model_name="qwen2.5:3b"):
+    def __init__(self, model_name="qwen2.5:7b"):
         self.llm = OllamaLLM(model=model_name, base_url="http://localhost:11434")
         self.embedder = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
@@ -71,9 +71,13 @@ class RAG_engine:
                     ("human", "{input}"),
                 ])
                 chain_chitchat = prompt_chitchat | self.llm
-                return chain_chitchat.invoke({"input": user_input, "chat_history": formatted_history}).content, None
+                result = chain_chitchat.invoke({"input": user_input, "chat_history": formatted_history})
+                answer = result.content if hasattr(result, "content") else result
+                return answer, None
             else:
-                return self.llm.invoke(user_input).content, None
+                result = self.llm.invoke(user_input)
+                answer = result.content if hasattr(result, "content") else result
+                return answer, None
 
         # Conservation RAG
         contextualize_q_system_prompt = (

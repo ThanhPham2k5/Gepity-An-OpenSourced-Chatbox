@@ -42,8 +42,8 @@ def confirm_action_dialog(action_type):
 if "rag" not in st.session_state:
     st.session_state.rag = RAG_engine()
 
-if "graph_engine" not in st.session_state:
-    st.session_state.graph_engine = Graph_engine()
+# if "graph_engine" not in st.session_state:
+#     st.session_state.graph_engine = Graph_engine()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -323,22 +323,6 @@ with chat_container:
 # user input
 user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
 
-# store response into session
-if user_req:
-    # add user request to session
-    current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-    st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
-
-    # redraw_chats()
-
-    # get response from llm with loading spinner
-    with st.spinner("Gepity đang suy nghĩ..."):
-        response = st.session_state.rag.get_response(user_req, st.session_state.retriever)
-        ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
-        st.session_state.messages.append({"role": "ai", "content": response, "time": ai_time}) # add llm's response to session
-
-    st.rerun()
-
 # upload file
 st.markdown('<div class="chat-input-container-anchor"></div>', unsafe_allow_html=True)
 with st.popover("Đính kèm file", use_container_width=False):
@@ -408,6 +392,30 @@ if user_req:
     
     with st.spinner("Gepity đang suy nghĩ..."):
         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+
+        # Xử lý bộ lọc
+        vector_search_kwargs = {"k": 4} # Lấy top 4 tài liệu
+        if filter_choice and filter_choice != "Tất cả":
+            # Gài thêm lệnh bắt buộc FAISS chỉ tìm trong file được chọn
+            vector_search_kwargs["filter"] = {"file_name": filter_choice}
+
+        # 1. Bơm bộ lọc mới cho pure_vector_retriever (Dành cho Standard RAG)
+        if st.session_state.vector_store:
+            pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs=vector_search_kwargs)
+        else:
+            pure_vector_retriever = None
+
+        # 2. Hack vào bụng EnsembleRetriever (Hybrid RAG) để bơm bộ lọc
+        if st.session_state.retriever:
+            for sub_retriever in st.session_state.retriever.retrievers:
+                if hasattr(sub_retriever, "search_kwargs"): 
+                    # Đây chính là ông FAISS đang nấp bên trong, gài filter cho ổng!
+                    sub_retriever.search_kwargs = vector_search_kwargs
+                elif hasattr(sub_retriever, "k"): 
+                    # Đây là ông BM25. Vì ổng không hỗ trợ pre-filter, ta phải nới lỏng
+                    # cho ổng lấy 15 đoạn về. Lát nữa Python Post-Filter sẽ tự cắt tỉa những file sai.
+                    sub_retriever.k = 15
+
         if st.session_state.get("comparison_mode", False):
             # --- Cột trái: Standard RAG (Chỉ dùng Vector FAISS) ---
             # Ta lấy trực tiếp từ vector_store, bỏ qua BM25
