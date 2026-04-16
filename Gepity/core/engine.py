@@ -75,9 +75,13 @@ class RAG_engine:
                     ("human", "{input}"),
                 ])
                 chain_chitchat = prompt_chitchat | self.llm
-                return chain_chitchat.invoke({"input": user_input, "chat_history": formatted_history}).content, None
+                result = chain_chitchat.invoke({"input": user_input, "chat_history": formatted_history})
+                answer = result.content if hasattr(result, "content") else result
+                return answer, None
             else:
-                return self.llm.invoke(user_input).content, None
+                result = self.llm.invoke(user_input)
+                answer = result.content if hasattr(result, "content") else result
+                return answer, None
 
         # Conservation RAG
         contextualize_q_system_prompt = (
@@ -112,7 +116,6 @@ class RAG_engine:
         raw_docs = history_aware_retriever.invoke({"input": user_input, "chat_history": formatted_history})
 
         # 2. LỌC TÀI LIỆU (POST-FILTERING)
-        # Thay vì ép DB lọc (dễ gây lỗi), ta lấy kết quả ra rồi tự dùng Python để lọc
         relevant_docs = []
         if filter_filename and filter_filename != "Tất cả":
             for doc in raw_docs:
@@ -120,6 +123,7 @@ class RAG_engine:
                     relevant_docs.append(doc)
         else:
             relevant_docs = raw_docs
+        relevant_docs = relevant_docs[:4]
 
         response = question_answer_chain.invoke({
             "input": user_input,

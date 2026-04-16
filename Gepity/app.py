@@ -42,8 +42,8 @@ def confirm_action_dialog(action_type):
 if "rag" not in st.session_state:
     st.session_state.rag = RAG_engine()
 
-if "graph_engine" not in st.session_state:
-    st.session_state.graph_engine = Graph_engine()
+# if "graph_engine" not in st.session_state:
+#     st.session_state.graph_engine = Graph_engine()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -113,7 +113,7 @@ with st.sidebar:
 
     # Section: Cài đặt Chunk 
     st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
-    with st.expander("⚙️ Tùy chỉnh Chunk Parameters", expanded=False):
+    with st.expander("Tùy chỉnh Chunk Parameters", expanded=False):
         st.markdown("<span style='font-size: 0.85em; color: gray;'>Thiết lập trước khi upload tài liệu</span>", unsafe_allow_html=True)
         
         chunk_size = st.slider(
@@ -242,18 +242,19 @@ st.markdown(f"""
 chat_container = st.container()
 with chat_container:
     for msg in st.session_state.messages:
-        is_user = msg["role"] == "user"
-        bubble_class = "user-bubble" if is_user else "ai-bubble"
+        is_user = msg["role"] == 'user'
+        css_class = 'user_bubble' if is_user else 'ai_bubble'
+        avatar = user_bubble if is_user else ai_bubble
         name = "Bạn" if is_user else "Gepity"
+        time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
         if is_user or not st.session_state.get("comparison_mode", False):
             st.markdown(f"""
-                <div class="chat-row {bubble_class}-row">
-                    <div class="chat-bubble {bubble_class}">
-                        <div class="bubble-info">
-                            <span class="bubble-name">{name}</span>
-                            <span class="bubble-time">{msg.get('time', '')}</span>
-                        </div>
-                        <div class="bubble-content">{msg['content']}</div>
+                <div class="bubble-header-{css_class}">
+                    <img src="data:image/png;base64,{avatar}" class="{css_class}-ico"/>
+                    <div class="bubble-answer-{css_class}">
+                        <span class="bubble-name">{name}</span>
+                        <div class="{css_class}">{msg["content"]}</div>
+                        <span class="bubble-time">{time_str}</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
@@ -387,26 +388,37 @@ if user_req:
     
     with st.spinner("Gepity đang suy nghĩ..."):
         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+
+        vector_search_kwargs = {"k": 3} 
+        if filter_choice and filter_choice != "Tất cả":
+            vector_search_kwargs["filter"] = {"file_name": filter_choice}
+
+        pure_vector_retriever = None
+        if st.session_state.vector_store:
+            pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs=vector_search_kwargs)
+
+        if st.session_state.retriever:
+            for sub_retriever in st.session_state.retriever.retrievers:
+                if hasattr(sub_retriever, "search_kwargs"): 
+                    sub_retriever.search_kwargs = vector_search_kwargs
+                elif hasattr(sub_retriever, "k"): 
+                    sub_retriever.k = 15
+
         if st.session_state.get("comparison_mode", False):
-            # --- Cột trái: Standard RAG (Chỉ dùng Vector FAISS) ---
-            # Ta lấy trực tiếp từ vector_store, bỏ qua BM25
-            pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3}) if st.session_state.vector_store else None
+            
             res_standard, sources_standard = st.session_state.rag.get_response(
                 user_req, pure_vector_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
-            
-            # --- Cột phải: Hybrid RAG (Ensemble FAISS + BM25) ---
-            # st.session_state.retriever hiện tại chính là bản đã trộn (Ensemble)
             res_hybrid, sources_hybrid = st.session_state.rag.get_response(
                 user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
             
             st.session_state.messages.append({
-                "role": "ai", 
-                "content": res_standard,                
-                "sources": sources_standard, 
-                "hybrid_content": res_hybrid,           
-                "hybrid_sources": sources_hybrid,       
+                "role": "ai",
+                "content": res_standard,
+                "sources": sources_standard,
+                "hybrid_content": res_hybrid,
+                "hybrid_sources": sources_hybrid,
                 "time": ai_time
             })
             
@@ -414,13 +426,7 @@ if user_req:
             response, sources = st.session_state.rag.get_response(
                 user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
-            
-            st.session_state.messages.append({
-                "role": "ai", 
-                "content": response, 
-                "sources": sources,
-                "time": ai_time
-            })
+            st.session_state.messages.append({"role": "ai", "content": response, "sources": sources, "time": ai_time})
 
     st.rerun()
 
