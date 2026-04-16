@@ -19,6 +19,12 @@ load_dotenv()
 def _is_running_in_streamlit():
     return get_script_run_ctx() is not None
 
+# Use for Windows IP
+WINDOWS_IP = "172.25.64.1"
+
+# Use for WSL IP
+# WINDOWS_IP = "localhost"
+
 class Graph_engine:
     def __init__(self, summary_model_name="qwen2.5:3b", response_model_name="qwen2.5:3b"):
         
@@ -27,6 +33,7 @@ class Graph_engine:
             model=response_model_name, 
             temperature=0.7, # higher temperature for more creative response generation
             num_ctx=4096,
+            base_url=f"http://{WINDOWS_IP}:11434"
         )
 
         # use to determine what type of question the user is asking
@@ -35,7 +42,8 @@ class Graph_engine:
             temperature=0,          
             format="json",            
             num_ctx=2048,             
-            num_thread=4
+            num_thread=4,
+            base_url=f"http://{WINDOWS_IP}:11434"
         )
 
         # use to build community summary
@@ -44,6 +52,7 @@ class Graph_engine:
             temperature=0,
             num_ctx=4096,
             format="json",
+            base_url=f"http://{WINDOWS_IP}:11434"
         )
 
         self.graph = get_graph_connection()
