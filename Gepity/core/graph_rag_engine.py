@@ -2,8 +2,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import os
-from urllib import response
-
 from gliner import GLiNER
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama, OllamaLLM
@@ -12,7 +10,7 @@ from langchain_community.vectorstores import FAISS
 from utils import is_vietnamese, setup_constraints
 
 from langchain_core.prompts.chat import ChatPromptTemplate
-from database import get_graph_connection, get_vector_from_database
+from database import get_graph_connection, get_vector_from_index
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from dotenv import load_dotenv
@@ -40,7 +38,7 @@ class Graph_engine:
         self.graph = get_graph_connection()
         setup_constraints(self.graph)
 
-        # 1. Prompt cho Level 0 (Gom Entities)
+        # Prompt for level 0 community
         leaf_prompt = ChatPromptTemplate.from_messages([
             ("system", """Bạn là chuyên gia phân tích đồ thị tri thức. Dựa trên danh sách các thực thể (Entity) và mô tả của chúng, hãy tóm tắt cụm này.
             - 'title': Tên chủ đề chung của các thực thể.
@@ -52,7 +50,7 @@ class Graph_engine:
             ("human", "Danh sách thực thể:\n{community_data}")
         ])
 
-        # 2. Prompt cho Level 1+ (Gom Sub-communities)
+        # Prompt for level 1+ community
         parent_prompt = ChatPromptTemplate.from_messages([
             ("system", """Bạn là chuyên gia tổng hợp thông tin vĩ mô. Dựa trên thông tin của các cụm chủ đề con (Sub-communities), hãy tổng hợp chúng thành một cụm chủ đề cha (Parent Community).
             - 'title': Tên chủ đề vĩ mô bao trùm tất cả các cụm con.
@@ -75,7 +73,7 @@ class Graph_engine:
             cache_folder="/home/thien/OSSD/models_cache"
         )
 
-        self.vector_index = get_vector_from_database(embedder=self.embedder)
+        self.vector_index = None
 
         self.gliner_model = GLiNER.from_pretrained("urchade/gliner_multi")
         
@@ -239,7 +237,7 @@ class Graph_engine:
         # Xử lý và tạo Community Nodes (Level 0)  
         level_0_community_ids = []
 
-        # parallelize llm call
+        
         processed_communities = []
 
         # for record in results:
@@ -252,7 +250,7 @@ class Graph_engine:
         #         else:
         #             print(msg)
 
-
+        # parallelize llm call
         with ThreadPoolExecutor(max_workers=5) as executor:
             future_to_complete = {executor.submit(self.process_community_worker, rec, 0): rec for rec in results}
             
@@ -372,51 +370,80 @@ class Graph_engine:
                 st.success(msg)
             else:
                 print(msg)
+
+    def local_search(self, user_input, threshold=0.7, top_k=5):
+        # embed usesr input for vector search
+        query_vector = self.embedder.embed_query(user_input)
+
+        # use cypher to query relevant chunks, entities and community summaries for said entities
+        retrieval_query = """
+        CALL db.index.vector.queryNodes('chunk_embeddings', $top_k, $query_vector)
+        YIELD node AS chunk, score
+        WHERE score >= $threshold
+
+        OPTIONAL MATCH (chunk)-[:HAS_ENTITY]->(e:Entity)
+
+        OPTIONAL MATCH (e)-[:IN_COMMUNITY]->(comm:Community)
+        
+        RETURN
+            chunk.text as text,
+            chunk.page as page_number,
+            score,
+            collect(DISTINCT e.name) as related_entities,
+            collect(DISTINCT comm.summary) as related_community_summaries
+        """
+
+        results = self.graph.query(retrieval_query, {
+            "query_vector": query_vector,
+            "top_k": top_k,
+            "threshold": threshold
+        })
+        
+        return results
+
+    def build_context_from_result(self, results):
+        if len(results) == 0:
+            return ""
+        all_chunks = []
+        all_entities = set()
+        all_summaries = set()
+
+        for res in results:
+            all_chunks.append(res['text'])
+            if res['related_entities']:
+                all_entities.update(res['related_entities'])
+            if res['related_community_summaries']:
+                all_summaries.update(res['related_community_summaries'])
+
+        # build the context
+        final_context = "Dưới đây là các thông tin ngữ cảnh được trích xuất từ cơ sở dữ liệu tri thức:\n\n"
+
+        # Community Insights
+        if all_summaries:
+            final_context += "### CÁC CHỦ ĐỀ LIÊN QUAN:\n"
+            final_context += "\n".join([f"- {s}" for s in all_summaries]) + "\n\n"
+
+        # Entities
+        if all_entities:
+            final_context += f"### THỰC THỂ CHÍNH: {', '.join(all_entities)}\n\n"
+
+        # Chunks
+        final_context += "### CHI TIẾT VĂN BẢN:\n"
+        for i, text in enumerate(all_chunks, 1):
+            final_context += f"[Nguồn {i}]: {text}\n\n"
+
+        return final_context
         
     def get_response(self, user_input):
-
         if not self.graph:
             st.error("Không thể kết nối đến Neo4j")
             if is_vietnamese(user_input):
                 return f"""Xin lỗi, tôi không thể truy cập vào đồ thị kiến thức vào lúc này. Vui lòng thử lại sau."""
             else:
                 return f"""Sorry, I cannot access the knowledge graph at the moment. Please try again later."""
-        
-        #extract nodes relevant to user input from graph
-        relevant_nodes = self.vector_index.similarity_search(user_input, k=5)
-        
-        # build graph context based on extracted entity
-        graph_context_list = []
-        entity_ids = [node.page_content for node in relevant_nodes]
-        cypher_query = """
-        MATCH (n)-[r]-(m)
-        WHERE n.id IN $entity_ids 
-           OR n.id CONTAINS $query_upper 
-           OR n.id CONTAINS $query_title
-        RETURN n.id AS source, type(r) AS rel, m.id AS target, n.description AS desc
-        LIMIT 10
-        """
-        
-        query_upper = user_input.upper()
-        query_title = user_input.title()
 
-        results = self.graph.query(cypher_query, {
-            "entity_ids": entity_ids,
-            "query_upper": query_upper,
-            "query_title": query_title
-        })
-
-        for record in results:
-            relation_str = f"{record['source']} --[{record['rel']}]--> {record['target']}"
-            
-            description = record.get('desc') 
-            if description:
-                relation_str += f" ({description})"
-                
-            graph_context_list.append(relation_str)
-
-        # join all relationships into a single string as graph context for response generation
-        graph_context = "\n".join(list(set(graph_context_list)))
+        raw_results = self.local_search(user_input)
+        graph_context = self.build_context_from_result(raw_results)
 
         if not graph_context:
             if is_vietnamese(user_input):
@@ -429,31 +456,54 @@ class Graph_engine:
         prompt = self.build_response_prompt(user_input, context=graph_context)
         response = self.response_llm.invoke(prompt)
 
-        return response.content
+        return response.content, raw_results
         
         
     def build_response_prompt(self, user_input, context):
-        # build prompt with graph context and user input
+        """
+        Xây dựng prompt tối ưu cho kiến trúc GraphRAG.
+        Hướng dẫn LLM cách đọc hiểu 3 tầng thông tin (Community, Entity, Chunk).
+        """
         if is_vietnamese(user_input):
-            return f"""Dựa trên input của người dùng, hãy sử dụng các mối quan hệ thực thể dưới đây (được trích xuất từ Knowledge Graph) để trả lời câu hỏi. 
-            Nếu thông tin dưới đây không có câu trả lời, hãy dựa vào kiến thức của bạn nhưng hãy thông báo trước nếu bạn làm vậy.
+            return f"""Bạn là một trợ lý AI thông minh. Nhiệm vụ của bạn là trả lời câu hỏi dựa trên ngữ cảnh được trích xuất từ Đồ thị Tri thức (Knowledge Graph).
+            
+            Ngữ cảnh được cung cấp bao gồm 3 phần từ khái quát đến chi tiết:
+            1. CÁC CHỦ ĐỀ LIÊN QUAN: Tóm tắt bức tranh toàn cảnh về các chủ đề/cộng đồng liên quan.
+            2. THỰC THỂ CHÍNH: Các đối tượng, khái niệm quan trọng có trong câu hỏi.
+            3. CHI TIẾT VĂN BẢN: Các trích đoạn nguyên bản từ tài liệu gốc.
 
-            Các mối quan hệ thực thể:
+            QUY TẮC BẮT BUỘC:
+            - ƯU TIÊN TỐI ĐA việc sử dụng thông tin trong ngữ cảnh được cung cấp.
+            - Hãy kết hợp thông tin bao quát từ "Chủ đề liên quan" và số liệu cụ thể từ "Chi tiết văn bản" để tạo ra một câu trả lời toàn diện, logic.
+            - Nếu bạn lấy thông tin trực tiếp từ phần "Chi tiết văn bản", bạn BẮT BUỘC phải trích dẫn Nguồn (Ví dụ: Theo [Nguồn 1]...).
+            - NẾU NGỮ CẢNH KHÔNG CÓ CÂU TRẢ LỜI: Hãy nói "Câu hỏi cung cấp quá ít thông tin để có câu trả lời.".
+
+            Ngữ cảnh:
             {context}
 
             Câu hỏi: {user_input}
-            
-            Trả lời BẮT BUỘC bằng tiếng Việt (ngắn gọn, tập trung vào mối quan hệ giữa các thực thể):"""
+
+            Câu trả lời BẰNG TIẾNG VIỆT (Trình bày mạch lạc, dễ hiểu):"""
         else: 
-            return f"""Based on user input, use the entity relationships listed below (extracted from a knowledege graph) to answer the question.
-            If the provided information does not have an answer, then use your availabled knowledge but you must notify when you do.
-            
-            Entity relationships:
+            return f"""You are an intelligent AI assistant. Your task is to answer the user's question based on the context extracted from a Knowledge Graph.
+
+            The provided context consists of 3 levels of information, from macro to micro:
+            1. CÁC CHỦ ĐỀ LIÊN QUAN (Community Insights): Macro-level summaries of relevant topics and communities.
+            2. THỰC THỂ CHÍNH (Key Entities): Important entities and concepts.
+            3. CHI TIẾT VĂN BẢN (Text Chunks): Raw excerpts from the source documents.
+
+            STRICT RULES:
+            - PRIORITIZE the provided context above all else.
+            - Synthesize the broad understanding from the "Community Insights" with the specific details from the "Text Chunks" to provide a comprehensive answer.
+            - If you use specific information from the "Text Chunks", you MUST cite your sources (e.g., According to [Nguồn 1]...).
+            - IF THE CONTEXT DOES NOT CONTAIN THE ANSWER: You must state "The question provided too little information to form an answer.".
+
+            Context:
             {context}
-            
+
             Question: {user_input}
 
-            Answer(concise, focus on the relationships between entities):"""
+            Answer IN ENGLISH (Clear, concise, and well-structured):"""
         
     def process_single_chunk(self, chunk):
         # Prepare Document and Chunk Data
@@ -461,6 +511,7 @@ class Graph_engine:
         doc_name = chunk.metadata.get("filename") or os.path.basename(doc_source)
 
         chunk_text = chunk.page_content
+        chunk_page = chunk.metadata.get("page", 0) + 1
         chunk_id = hashlib.md5(chunk_text.encode('utf-8')).hexdigest()
 
         # generate embeddings for the chunk
@@ -491,7 +542,7 @@ class Graph_engine:
                     // Create Document and Chunk
                     MERGE (d:Document {source: $doc_source}) SET d.name = $doc_name
                     MERGE (c:Chunk {id: $chunk_id})
-                    SET c.text = $chunk_text, c.embedding = $chunk_embedding
+                    SET c.text = $chunk_text, c.embedding = $chunk_embedding, c.page = $chunk_page
                     MERGE (c)-[:PART_OF]->(d)
 
                     // Batch Entities
@@ -516,6 +567,7 @@ class Graph_engine:
                         "doc_name": doc_name,
                         "chunk_id": chunk_id,
                         "chunk_text": chunk_text,
+                        "chunk_page": chunk_page,
                         "chunk_embedding": chunk_embedding,
                         "entities": batch_entities,
                         "rels": relationships
@@ -550,8 +602,8 @@ class Graph_engine:
             return {
                 "community_id": community_id,
                 "title": info.get("title", f"Cụm {community_group_id}"),
-                "summary": info.get("summary", ""),
-                "full_content": info.get("full_content", ""),
+                "summary": info.get("summary", "unknown"),
+                "full_content": info.get("full_content", "unknown"),
                 "weight": len(cluster),
                 "entity_names": [c['entity_name'] for c in cluster],
                 "level": level
@@ -576,8 +628,8 @@ class Graph_engine:
                     "parent_id": parent_id,
                     "title": parent_info.get("title", f"Tổng hợp Level {level}"),
                     "level": level,
-                    "summary": parent_info.get("summary", ""),
-                    "full_content": parent_info.get("full_content", ""),
+                    "summary": parent_info.get("summary", "unknown"),
+                    "full_content": parent_info.get("full_content", "unknown"),
                     "weight": len(batch),
                     "child_ids": [c['id'] for c in batch]
                 }

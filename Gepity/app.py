@@ -341,26 +341,26 @@ with st.popover("Đính kèm file", use_container_width=False):
             with st.spinner("Gepity đang xử lý tài liệu..."):
 
                 # basic rag
-                # retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
-                #     upload_file, 
-                #     chunk_size=st.session_state.get("chunk_size", 500), 
-                #     chunk_overlap=st.session_state.get("chunk_overlap", 50)
-                # )
-                # st.session_state.retriever = retriever
-                # st.session_state.vector_store = vector_store
-                # st.session_state["last_file_key"] = file_key
-                # st.session_state["uploaded_filenames"] = [f.name for f in upload_file]
-                # st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}"
+                retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
+                    upload_file, 
+                    chunk_size=st.session_state.get("chunk_size", 500), 
+                    chunk_overlap=st.session_state.get("chunk_overlap", 50)
+                )
+                st.session_state.retriever = retriever
+                st.session_state.vector_store = vector_store
+                st.session_state["last_file_key"] = file_key
+                st.session_state["uploaded_filenames"] = [f.name for f in upload_file]
+                st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}"
 
                 # graph rag
-                with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
-                    chunks = st.session_state.graph_engine.process_document(
-                        uploaded_files=upload_file,
-                        chunk_size=st.session_state.get("chunk_size", 800), 
-                        chunk_overlap=st.session_state.get("chunk_overlap", 80)
-                    )
-                    chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
-                    st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
+                # with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
+                #     chunks = st.session_state.graph_engine.process_document(
+                #         uploaded_files=upload_file,
+                #         chunk_size=st.session_state.get("chunk_size", 800), 
+                #         chunk_overlap=st.session_state.get("chunk_overlap", 80)
+                #     )
+                #     chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
+                #     st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
 
 
 
