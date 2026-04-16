@@ -18,3 +18,7 @@ Gepity/faiss_index/
 
 # Env file
 .env
+
+# Hugging Face models cache
+models_cache/
+Gepity/models_cache/

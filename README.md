@@ -20,7 +20,7 @@
 
 - [WSL (Ubuntu)](https://learn.microsoft.com/en-us/windows/wsl/install) or Linux/macOS
 - Python 3.8+
-- [Ollama](https://ollama.ai) installed on your machine
+- [Ollama](https://ollama.com/download/windows) installed on your machine
 - [Neo4j Desktop](https://neo4j.com/download/) installed and running
 
 ---
@@ -50,6 +50,8 @@ make install
 
 **4. Pull the LLM model** _(requires Ollama to be installed)_
 
+### On WSL:
+
 ```bash
 sudo snap install ollama
 ollama pull qwen2.5:3b
@@ -57,9 +59,53 @@ ollama list
 ollama serve
 ```
 
----
+### On Windows:
+
+```shell
+ollama pull qwen2.5:3b
+ollama list
+ollama serve
+```
+
+### Setting up Ollama on Windows:
+
+1. Find **Edit the system environment variables** in Search
+
+2. Choose **Environment Variables....**
+
+3. In **User variables** creates new variable:
+
+```bash
+   Variable name: OLLAMA_HOST
+   Variable value: 0.0.0.0
+```
+
+4. Open Ollama on Windows again to turn on global IP
+
+5. Enter **ipconfig** in Powershell on Windows
+
+6. Copy the IPv4 and paste it into **WINDOWS_IP** in
+
+   **Gepity-An-OpenSourced-Chatbox/Gepity/core/engine.py**
+
+7. Change the **MODELS_CACHE** path with your real URL
+
+   **home/your_wsl/.../Gepity-An-OpenSourced-Chatbox/Gepity/core/engine.py**
+
+8. Find **Windows Defender Firewall with Advanced Security** in Search
+
+9. Choose **Inbound Rules** -> **New Rule** -> **Port** -> **TCP** + **11434** in Specific local ports -> **Allow the connection** -> check **Domain, Private, Public** -> enter rule name and finish
+
+10. Enter **ollama serve** in Powershell on Windows to start the LLM (remember always disable ollama run in background)
+
+11. Check the connection in WSL by typing "curl http://your_IPv4:11434"
+
+### Warning:
+
+If you have already installed Ollama on WSL and want to change to Windows. Remember to uninstall Ollama on WSL and reinstall following the intructions above.
 
 ### Setting up Neo4j for GraphRAG
+
 To utilize the Knowledge Graph capabilities, you need to set up a local Neo4j database:
 
 1. Download and install [Neo4j Desktop](https://neo4j.com/download/).
@@ -75,6 +121,7 @@ To utilize the Knowledge Graph capabilities, you need to set up a local Neo4j da
 ---
 
 ### Environment Variables Setup
+
 You need to configure the .env file to connect the application to your Neo4j database and HuggingFace API.
 
 1. In the root directory, locate the [.env_example](./.env_example) file.
@@ -96,7 +143,15 @@ NEO4J_DATABASENAME="neo4j"
 
 HF_TOKEN="YOUR-HUGGING-FACE-TOKEN"
 ```
+
 (Note: If you are running WSL and Neo4j is on Windows, use ip route | grep default to find the correct IP address instead of localhost).
+
+### 🔑 How to get Hugging Face Token (HF_TOKEN)
+
+1. HuggingFace: [huggingface.co](https://huggingface.co/).
+2. Choose Avatar: **Settings** > **Access Tokens**.
+3. Create new token with **Read** token type.
+4. Copy token and paste `HF_TOKEN=your_token_here`.
 
 ---
 
@@ -159,19 +214,18 @@ Gepity-An-OpenSourced-Chatbox/
 
 ## 📚 Tech Stack
 
-| Layer            | Technology                                     |
-| ---------------- | ---------------------------------------------- |
-| Frontend         | Streamlit                                      |
-| LLM Runtime      | Ollama + Qwen2.5                               |
-| Framework        | LangChain (Core, Neo4j, Experimental, Ollama)  |
-| Knowledge Graph  | Neo4j, neo4j-graphrag                          |
-| Embeddings       | sentence-transformers (multilingual MPNet)     |
-| Vector Store     | FAISS                                          |
-| Document Parsing | PDFPlumber, PyPDF, docx2txt                    |
-| NLP & NER        | NLTK, GLiNER                                   |
-| Keyword Search   | rank_bm25                                      |
-| Testing          | Pytest                                         |
-
+| Layer            | Technology                                    |
+| ---------------- | --------------------------------------------- |
+| Frontend         | Streamlit                                     |
+| LLM Runtime      | Ollama + Qwen2.5                              |
+| Framework        | LangChain (Core, Neo4j, Experimental, Ollama) |
+| Knowledge Graph  | Neo4j, neo4j-graphrag                         |
+| Embeddings       | sentence-transformers (multilingual MPNet)    |
+| Vector Store     | FAISS                                         |
+| Document Parsing | PDFPlumber, PyPDF, docx2txt                   |
+| NLP & NER        | NLTK, GLiNER                                  |
+| Keyword Search   | rank_bm25                                     |
+| Testing          | Pytest                                        |
 
 ---
 
