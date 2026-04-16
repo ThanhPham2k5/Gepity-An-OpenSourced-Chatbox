@@ -48,13 +48,15 @@ def test_response(engine):
             start_time = time.time()
             
             # Gọi hàm xử lý chính
-            response, sources = engine.get_response(user_input)
+            response_type, response, sources = engine.get_response(user_input)
             
             end_time = time.time()
             duration = end_time - start_time
 
             # In kết quả
             print("-" * 30)
+            if(response_type):
+                print(f"LOẠI CÂU HỎI: {response_type}")
             print(f"CÂU TRẢ LỜI ({duration:.2f} giây):")
             print(response)
             if sources:
@@ -74,6 +76,6 @@ if __name__ == "__main__":
     # Initialize engine
     engine = Graph_engine()
 
-    test_extraction(engine)
+    # test_extraction(engine)s
 
     test_response(engine)

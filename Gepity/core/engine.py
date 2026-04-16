@@ -21,12 +21,12 @@ class RAG_engine:
     def __init__(self, model_name="qwen2.5:3b"):
         self.llm = OllamaLLM(model=model_name, base_url="http://localhost:11434")
         # This tells the library where to save the model on your disk
-        os.environ['HF_HOME'] = '/home/thien/OSSD/models_cache'
+        os.environ['HF_HOME'] = '../../models_cache'
         self.embedder = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
             model_kwargs={"device": "cpu", "token": os.getenv("HF_TOKEN")},
             encode_kwargs={"normalize_embeddings": True},
-            cache_folder="/home/thien/OSSD/models_cache"
+            cache_folder="../../models_cache"
         )
 
     def process_document(self, uploaded_files, chunk_size=500, chunk_overlap=50):

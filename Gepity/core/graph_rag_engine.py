@@ -4,9 +4,9 @@ import json
 import os
 from gliner import GLiNER
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_ollama import ChatOllama, OllamaLLM
+from langchain_ollama import ChatOllama
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks, extract_and_link_entities
-from langchain_community.vectorstores import FAISS
+from .builder import build_local_response_prompt, build_global_reduce_prompt, build_router_prompt, build_leaf_prompt, build_parent_prompt, build_global_context_from_result, build_local_context_from_result
 from utils import is_vietnamese, setup_constraints
 
 from langchain_core.prompts.chat import ChatPromptTemplate
@@ -22,12 +22,23 @@ def _is_running_in_streamlit():
 class Graph_engine:
     def __init__(self, summary_model_name="qwen2.5:3b", response_model_name="qwen2.5:3b"):
         
+        # use to response 
         self.response_llm = ChatOllama(
             model=response_model_name, 
             temperature=0.7, # higher temperature for more creative response generation
             num_ctx=4096,
         )
 
+        # use to determine what type of question the user is asking
+        self.router_llm = ChatOllama(
+            model="qwen2.5:3b",
+            temperature=0,          
+            format="json",            
+            num_ctx=2048,             
+            num_thread=4
+        )
+
+        # use to build community summary
         self.summary_llm = ChatOllama(
             model=summary_model_name,
             temperature=0,
@@ -38,42 +49,26 @@ class Graph_engine:
         self.graph = get_graph_connection()
         setup_constraints(self.graph)
 
+        # Prompt for router
+        router_prompt = build_router_prompt()
+
         # Prompt for level 0 community
-        leaf_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Bạn là chuyên gia phân tích đồ thị tri thức. Dựa trên danh sách các thực thể (Entity) và mô tả của chúng, hãy tóm tắt cụm này.
-            - 'title': Tên chủ đề chung của các thực thể.
-            - 'summary': 1-2 câu mô tả mối liên hệ giữa các thực thể này.
-            - 'full_content': Đoạn văn phân tích chi tiết vai trò của các thực thể và lý do chúng được xếp chung vào một cụm.
-            - Output: BẮT BUỘC là JSON Object bằng Tiếng Việt: {{"title": "", "summary": "", "full_content": ""}} 
-            Tuyệt đối không dùng markdown block.
-            Mọi trường(field) đều BẮT BUỘC phải có."""),
-            ("human", "Danh sách thực thể:\n{community_data}")
-        ])
+        leaf_prompt = build_leaf_prompt()
 
         # Prompt for level 1+ community
-        parent_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Bạn là chuyên gia tổng hợp thông tin vĩ mô. Dựa trên thông tin của các cụm chủ đề con (Sub-communities), hãy tổng hợp chúng thành một cụm chủ đề cha (Parent Community).
-            - 'title': Tên chủ đề vĩ mô bao trùm tất cả các cụm con.
-            - 'summary': 1-2 câu tóm tắt điểm giao thoa lớn nhất giữa các cụm con.
-            - 'full_content': Đoạn văn phân tích bức tranh toàn cảnh, cách các cụm con này ghép lại để tạo thành một chủ đề lớn hơn.
-            - Output: BẮT BUỘC là JSON Object bằng Tiếng Việt: {{"title": "", "summary": "", "full_content": ""}}
-            Tuyệt đối không dùng markdown block.
-            Mọi trường(field) đều BẮT BUỘC phải có."""),
-            ("human", "Thông tin các cụm con:\n{community_data}")
-        ])
+        parent_prompt = build_parent_prompt()
 
+        self.router_chain = router_prompt | self.router_llm
         self.leaf_chain = leaf_prompt | self.summary_llm
         self.parent_chain = parent_prompt | self.summary_llm
 
-        os.environ['HF_HOME'] = '/home/thien/OSSD/models_cache'
+        os.environ['HF_HOME'] = '../../models_cache'
         self.embedder = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
             model_kwargs={"device": "cpu", "token": os.getenv("HF_TOKEN")},
             encode_kwargs={"normalize_embeddings": True},
-            cache_folder="/home/thien/OSSD/models_cache"
+            cache_folder="../../models_cache"
         )
-
-        self.vector_index = None
 
         self.gliner_model = GLiNER.from_pretrained("urchade/gliner_multi")
         
@@ -371,6 +366,31 @@ class Graph_engine:
             else:
                 print(msg)
 
+    def global_search(self, level=None):
+        if not level: # if level was not specified, get the second highest level
+            level_query = """
+            MATCH (c:Community)
+            ORDER BY c.level DESC
+            SKIP 1
+            LIMIT 1
+            RETURN c.level as level
+            """
+            level_data = self.graph.query(level_query)
+            level = level_data[0]['level']
+
+        retrieval_query = """
+        MATCH (comm:Community)
+        WHERE comm.level = $level AND comm.full_content <> ""
+
+        RETURN comm.full_content
+        """
+
+        results = self.graph.query(retrieval_query, {
+            "level": level
+        })
+
+        return results
+
     def local_search(self, user_input, threshold=0.7, top_k=5):
         # embed usesr input for vector search
         query_vector = self.embedder.embed_query(user_input)
@@ -400,39 +420,6 @@ class Graph_engine:
         })
         
         return results
-
-    def build_context_from_result(self, results):
-        if len(results) == 0:
-            return ""
-        all_chunks = []
-        all_entities = set()
-        all_summaries = set()
-
-        for res in results:
-            all_chunks.append(res['text'])
-            if res['related_entities']:
-                all_entities.update(res['related_entities'])
-            if res['related_community_summaries']:
-                all_summaries.update(res['related_community_summaries'])
-
-        # build the context
-        final_context = "Dưới đây là các thông tin ngữ cảnh được trích xuất từ cơ sở dữ liệu tri thức:\n\n"
-
-        # Community Insights
-        if all_summaries:
-            final_context += "### CÁC CHỦ ĐỀ LIÊN QUAN:\n"
-            final_context += "\n".join([f"- {s}" for s in all_summaries]) + "\n\n"
-
-        # Entities
-        if all_entities:
-            final_context += f"### THỰC THỂ CHÍNH: {', '.join(all_entities)}\n\n"
-
-        # Chunks
-        final_context += "### CHI TIẾT VĂN BẢN:\n"
-        for i, text in enumerate(all_chunks, 1):
-            final_context += f"[Nguồn {i}]: {text}\n\n"
-
-        return final_context
         
     def get_response(self, user_input):
         if not self.graph:
@@ -441,69 +428,51 @@ class Graph_engine:
                 return f"""Xin lỗi, tôi không thể truy cập vào đồ thị kiến thức vào lúc này. Vui lòng thử lại sau."""
             else:
                 return f"""Sorry, I cannot access the knowledge graph at the moment. Please try again later."""
-
-        raw_results = self.local_search(user_input)
-        graph_context = self.build_context_from_result(raw_results)
-
-        if not graph_context:
-            if is_vietnamese(user_input):
-                return f"""Xin lỗi, tôi không thể tìm thấy ngữ cảnh liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp."""
-            else:
-                return f"""Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided."""
         
-        # build prompt with graph context and user input
-        print(f"DEBUG: Context length: {len(graph_context)} characters")
-        prompt = self.build_response_prompt(user_input, context=graph_context)
-        response = self.response_llm.invoke(prompt)
+        # get router response
+        router_response = self.router_chain.invoke(user_input)
 
-        return response.content, raw_results
-        
-        
-    def build_response_prompt(self, user_input, context):
-        """
-        Xây dựng prompt tối ưu cho kiến trúc GraphRAG.
-        Hướng dẫn LLM cách đọc hiểu 3 tầng thông tin (Community, Entity, Chunk).
-        """
-        if is_vietnamese(user_input):
-            return f"""Bạn là một trợ lý AI thông minh. Nhiệm vụ của bạn là trả lời câu hỏi dựa trên ngữ cảnh được trích xuất từ Đồ thị Tri thức (Knowledge Graph).
+        # clean up response
+        router_content = router_response.content.replace("```json", "").replace("```", "").strip()
+        router_info = json.loads(router_content)
+
+        question_type = router_info.get("type", "general")
+
+        if question_type == "global":
+            raw_results = self.global_search(level=0)
+            global_context = build_global_context_from_result(raw_results)
+
+            if not global_context:
+                if is_vietnamese(user_input):
+                    return f"""Xin lỗi, tôi không thể tìm thấy ngữ cảnh liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp."""
+                else:
+                    return f"""Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided."""
+
+            # build prompt with graph context and user input
+            print(f"DEBUG: Context length: {len(global_context)} characters")
+            prompt = build_global_reduce_prompt(user_input, context=global_context)
+            response = self.response_llm.invoke(prompt)
+
+            return "global", response.content, ""
+        elif question_type == "local":
+            raw_results = self.local_search(user_input)
+            graph_context = build_local_context_from_result(raw_results)
+
+            if not graph_context:
+                if is_vietnamese(user_input):
+                    return f"""Xin lỗi, tôi không thể tìm thấy ngữ cảnh liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp."""
+                else:
+                    return f"""Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided."""
             
-            Ngữ cảnh được cung cấp bao gồm 3 phần từ khái quát đến chi tiết:
-            1. CÁC CHỦ ĐỀ LIÊN QUAN: Tóm tắt bức tranh toàn cảnh về các chủ đề/cộng đồng liên quan.
-            2. THỰC THỂ CHÍNH: Các đối tượng, khái niệm quan trọng có trong câu hỏi.
-            3. CHI TIẾT VĂN BẢN: Các trích đoạn nguyên bản từ tài liệu gốc.
+            # build prompt with graph context and user input
+            print(f"DEBUG: Context length: {len(graph_context)} characters")
+            prompt = build_local_response_prompt(user_input, context=graph_context)
+            response = self.response_llm.invoke(prompt)
 
-            QUY TẮC BẮT BUỘC:
-            - ƯU TIÊN TỐI ĐA việc sử dụng thông tin trong ngữ cảnh được cung cấp.
-            - Hãy kết hợp thông tin bao quát từ "Chủ đề liên quan" và số liệu cụ thể từ "Chi tiết văn bản" để tạo ra một câu trả lời toàn diện, logic.
-            - Nếu bạn lấy thông tin trực tiếp từ phần "Chi tiết văn bản", bạn BẮT BUỘC phải trích dẫn Nguồn (Ví dụ: Theo [Nguồn 1]...).
-            - NẾU NGỮ CẢNH KHÔNG CÓ CÂU TRẢ LỜI: Hãy nói "Câu hỏi cung cấp quá ít thông tin để có câu trả lời.".
-
-            Ngữ cảnh:
-            {context}
-
-            Câu hỏi: {user_input}
-
-            Câu trả lời BẰNG TIẾNG VIỆT (Trình bày mạch lạc, dễ hiểu):"""
-        else: 
-            return f"""You are an intelligent AI assistant. Your task is to answer the user's question based on the context extracted from a Knowledge Graph.
-
-            The provided context consists of 3 levels of information, from macro to micro:
-            1. CÁC CHỦ ĐỀ LIÊN QUAN (Community Insights): Macro-level summaries of relevant topics and communities.
-            2. THỰC THỂ CHÍNH (Key Entities): Important entities and concepts.
-            3. CHI TIẾT VĂN BẢN (Text Chunks): Raw excerpts from the source documents.
-
-            STRICT RULES:
-            - PRIORITIZE the provided context above all else.
-            - Synthesize the broad understanding from the "Community Insights" with the specific details from the "Text Chunks" to provide a comprehensive answer.
-            - If you use specific information from the "Text Chunks", you MUST cite your sources (e.g., According to [Nguồn 1]...).
-            - IF THE CONTEXT DOES NOT CONTAIN THE ANSWER: You must state "The question provided too little information to form an answer.".
-
-            Context:
-            {context}
-
-            Question: {user_input}
-
-            Answer IN ENGLISH (Clear, concise, and well-structured):"""
+            return "local", response.content, raw_results
+        else:
+            response = self.response_llm.invoke(user_input)
+            return "general", response.content, ""
         
     def process_single_chunk(self, chunk):
         # Prepare Document and Chunk Data
