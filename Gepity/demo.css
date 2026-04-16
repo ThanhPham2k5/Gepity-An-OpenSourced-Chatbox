@@ -520,12 +520,12 @@ div[data-baseweb="slider"] > div:last-child {
 }
 
 /* css filter file */
-div[data-testid="stVerticalBlock"] > div:nth-of-type(8) > div:first-child {
+/* div[data-testid="stVerticalBlock"] > div:nth-of-type(8) > div:first-child {
   background-color: #f8f9fa;
   border-radius: 12px;
-}
+} */
 
-div[data-testid="stVerticalBlock"]
+/* div[data-testid="stVerticalBlock"]
   > div:nth-of-type(8)
   > div:first-child
   > div
@@ -535,11 +535,11 @@ div[data-testid="stVerticalBlock"]
   > div
   > p {
   color: #212529;
-}
+} */
 
-div[data-testid="stVerticalBlock"] > div:nth-of-type(9) {
+/* div[data-testid="stVerticalBlock"] > div:nth-of-type(9) {
   display: none;
-}
+} */
 
 /* css outline input */
 div[data-testid="stChatInput"]:focus-within > div > div:first-child {
@@ -824,4 +824,11 @@ div[data-testid="stSpinner"] i {
   font-size: 1rem;
   font-weight: 100;
   margin-bottom: 30px;
+}
+
+/* scroll bar for history */
+div[data-testid="stVerticalBlock"] > div:nth-of-type(7) > div > div {
+  max-height: 200px;
+  overflow: hidden auto;
+  justify-content: start;
 }
