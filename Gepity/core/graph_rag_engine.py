@@ -24,6 +24,7 @@ def _is_running_in_streamlit():
 
 # Use for WSL IP
 WINDOWS_IP = "localhost"
+MODELS_CACHE = "../../models_cache"
 
 class Graph_engine:
     def __init__(self, summary_model_name="qwen2.5:3b", response_model_name="qwen2.5:3b"):
@@ -71,12 +72,12 @@ class Graph_engine:
         self.leaf_chain = leaf_prompt | self.summary_llm
         self.parent_chain = parent_prompt | self.summary_llm
 
-        os.environ['HF_HOME'] = '../../models_cache'
+        os.environ['HF_HOME'] = MODELS_CACHE
         self.embedder = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
             model_kwargs={"device": "cpu", "token": os.getenv("HF_TOKEN")},
             encode_kwargs={"normalize_embeddings": True},
-            cache_folder="../../models_cache"
+            cache_folder= MODELS_CACHE
         )
 
         self.gliner_model = GLiNER.from_pretrained("urchade/gliner_multi")
