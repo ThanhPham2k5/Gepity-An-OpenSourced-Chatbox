@@ -92,6 +92,8 @@ class Graph_engine:
         return all_chunks
 
     def sync_to_graph(self, all_chunks):
+        # TODO: add processed document list to avoid reprocessing the same document which leads to bloat and noise
+
         in_streamlit = _is_running_in_streamlit()
 
         if not self.graph:
@@ -251,29 +253,15 @@ class Graph_engine:
         
         processed_communities = []
 
-        # for record in results:
-        #     result = self.process_community_worker(record, 0)
-        #     if result:
-        #         processed_communities.append(result)
-        #         msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
-        #         if in_streamlit:
-        #             status_text.text(msg)
-        #         else:
-        #             print(msg)
-
-        # parallelize llm call
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_complete = {executor.submit(self.process_community_worker, rec, 0): rec for rec in results}
-            
-            for future in as_completed(future_to_complete):
-                res = future.result()
-                if res:
-                    processed_communities.append(res)
-                    msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
-                    if in_streamlit:
-                        status_text.text(msg)
-                    else:
-                        print(msg, flush=True)
+        for record in results:
+            result = self.process_community_worker(record, 0)
+            if result:
+                processed_communities.append(result)
+                msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
+                if in_streamlit:
+                    status_text.text(msg)
+                else:
+                    print(msg)
 
         # single batch query
         if processed_communities:
@@ -335,23 +323,11 @@ class Graph_engine:
         
         parent_results = []
 
-        # for i in range(0, len(children), batch_size):
-        #     batch = children[i : i + batch_size]
-        #     result = self.summarize_parent_batch(batch, current_level, i)
-        #     if result:
-        #         parent_results.append(result)
-
-        # parallelize llm call
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_batch = {
-                executor.submit(self.summarize_parent_batch, batch, current_level, i): i 
-                for i, batch in enumerate(batches)
-            }
-            
-            for future in as_completed(future_to_batch):
-                res = future.result()
-                if res:
-                    parent_results.append(res)
+        for i in range(0, len(children), batch_size):
+            batch = children[i : i + batch_size]
+            result = self.summarize_parent_batch(batch, current_level, i)
+            if result:
+                parent_results.append(result)
 
         # single batch query
         if parent_results:
@@ -494,9 +470,11 @@ class Graph_engine:
             return response.content, ""
         
     def process_single_chunk(self, chunk):
+        #DEBUG
+        print(f"DEBUG: chunk metadata: {chunk.metadata}")
         # Prepare Document and Chunk Data
         doc_source = chunk.metadata.get("source", "unknown")
-        doc_name = chunk.metadata.get("filename", "unknown")
+        # doc_name = chunk.metadata.get("filename", "unknown")
 
         chunk_text = chunk.page_content
         chunk_page = chunk.metadata.get("page", 0) + 1
@@ -528,7 +506,7 @@ class Graph_engine:
                 def write_transaction(tx):
                     sync_query = """
                     // Create Document and Chunk
-                    MERGE (d:Document {source: $doc_source}) SET d.name = $doc_name
+                    MERGE (d:Document {source: $doc_source}) SET d.name = $doc_source
                     MERGE (c:Chunk {id: $chunk_id})
                     SET c.text = $chunk_text, c.embedding = $chunk_embedding, c.page = $chunk_page
                     MERGE (c)-[:PART_OF]->(d)
@@ -552,7 +530,6 @@ class Graph_engine:
 
                     tx.run(sync_query, {
                         "doc_source": doc_source,
-                        "doc_name": doc_name,
                         "chunk_id": chunk_id,
                         "chunk_text": chunk_text,
                         "chunk_page": chunk_page,
