@@ -106,10 +106,10 @@ class Graph_engine:
 
         if in_streamlit:
             progress_bar = st.progress(0)
-            st.info(f"Đang xử lý song song {total_chunks} chunks...")
+            st.info(f"Đang xử lý {total_chunks} chunks...")
             status_text = st.empty()
         else:
-            print(f"Đang xử lý song song {total_chunks} chunks...")
+            print(f"Đang xử lý {total_chunks} chunks...")
 
         # Use ThreadPoolExecutor with as_completed for real-time tracking
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -472,7 +472,7 @@ class Graph_engine:
             prompt = build_global_reduce_prompt(user_input, context=global_context)
             response = self.response_llm.invoke(prompt)
 
-            return response.content, ""
+            return response.content, []
         elif question_type == "local":
             raw_results = self.local_search(user_input)
             graph_context = build_local_context_from_result(raw_results)
@@ -489,9 +489,10 @@ class Graph_engine:
             response = self.response_llm.invoke(prompt)
 
             return response.content, raw_results
+            return response.content, raw_results
         else:
             response = self.response_llm.invoke(user_input)
-            return response.content, ""
+            return response.content, []
         
     def process_single_chunk(self, chunk):
         # Prepare Document and Chunk Data
