@@ -17,11 +17,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use for Windows IP
-WINDOWS_IP = "172.25.64.1"
+# WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-# WINDOWS_IP = "localhost"
-MODELS_CACHE = "/home/thanhpham/OpenSource/Gepity-An-OpenSourced-Chatbox/Gepity/models_cache"
+WINDOWS_IP = "localhost"
+MODELS_CACHE = "./../models_cache"
 
 class RAG_engine:
     def __init__(self, model_name="qwen2.5:3b"):

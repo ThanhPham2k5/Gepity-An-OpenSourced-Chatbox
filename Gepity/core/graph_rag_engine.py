@@ -20,10 +20,10 @@ def _is_running_in_streamlit():
     return get_script_run_ctx() is not None
 
 # Use for Windows IP
-WINDOWS_IP = "172.25.64.1"
+# WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-# WINDOWS_IP = "localhost"
+WINDOWS_IP = "localhost"
 
 class Graph_engine:
     def __init__(self, summary_model_name="qwen2.5:3b", response_model_name="qwen2.5:3b"):
@@ -244,29 +244,29 @@ class Graph_engine:
         
         processed_communities = []
 
-        # for record in results:
-        #     result = self.process_community_worker(record, 0)
-        #     if result:
-        #         processed_communities.append(result)
-        #         msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
-        #         if in_streamlit:
-        #             status_text.text(msg)
-        #         else:
-        #             print(msg)
+        for record in results:
+            result = self.process_community_worker(record, 0)
+            if result:
+                processed_communities.append(result)
+                msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
+                if in_streamlit:
+                    status_text.text(msg)
+                else:
+                    print(msg)
 
         # parallelize llm call
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_complete = {executor.submit(self.process_community_worker, rec, 0): rec for rec in results}
+        # with ThreadPoolExecutor(max_workers=5) as executor:
+        #     future_to_complete = {executor.submit(self.process_community_worker, rec, 0): rec for rec in results}
             
-            for future in as_completed(future_to_complete):
-                res = future.result()
-                if res:
-                    processed_communities.append(res)
-                    msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
-                    if in_streamlit:
-                        status_text.text(msg)
-                    else:
-                        print(msg, flush=True)
+        #     for future in as_completed(future_to_complete):
+        #         res = future.result()
+        #         if res:
+        #             processed_communities.append(res)
+        #             msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
+        #             if in_streamlit:
+        #                 status_text.text(msg)
+        #             else:
+        #                 print(msg, flush=True)
 
         # single batch query
         if processed_communities:
@@ -328,23 +328,23 @@ class Graph_engine:
         
         parent_results = []
 
-        # for i in range(0, len(children), batch_size):
-        #     batch = children[i : i + batch_size]
-        #     result = self.summarize_parent_batch(batch, current_level, i)
-        #     if result:
-        #         parent_results.append(result)
+        for i in range(0, len(children), batch_size):
+            batch = children[i : i + batch_size]
+            result = self.summarize_parent_batch(batch, current_level, i)
+            if result:
+                parent_results.append(result)
 
         # parallelize llm call
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_batch = {
-                executor.submit(self.summarize_parent_batch, batch, current_level, i): i 
-                for i, batch in enumerate(batches)
-            }
+        # with ThreadPoolExecutor(max_workers=5) as executor:
+        #     future_to_batch = {
+        #         executor.submit(self.summarize_parent_batch, batch, current_level, i): i 
+        #         for i, batch in enumerate(batches)
+        #     }
             
-            for future in as_completed(future_to_batch):
-                res = future.result()
-                if res:
-                    parent_results.append(res)
+        #     for future in as_completed(future_to_batch):
+        #         res = future.result()
+        #         if res:
+        #             parent_results.append(res)
 
         # single batch query
         if parent_results:
