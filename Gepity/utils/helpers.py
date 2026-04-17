@@ -2,6 +2,9 @@ import os
 import base64
 import streamlit as st
 from datetime import datetime 
+import re
+import time
+import json
 
 def img_to_base64(path):
     # get current directory of this file
@@ -32,6 +35,20 @@ def setup_constraints(graph):
     ]
     for cypher in constraints_cypher:
         graph.query(cypher)
+
+def extract_json_from_response(content):
+    """Sử dụng Regex để tìm và bóc tách khối JSON từ phản hồi của LLM."""
+    # Tìm kiếm khối bắt đầu bằng { và kết thúc bằng }
+    match = re.search(r'\{.*\}', content, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+    
+    # Fallback nếu không dùng regex được
+    clean_content = content.replace("```json", "").replace("```", "").strip()
+    return json.loads(clean_content)
 
 
 def update_current_chat_to_history():
