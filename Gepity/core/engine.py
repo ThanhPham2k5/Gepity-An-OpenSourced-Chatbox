@@ -106,8 +106,12 @@ class RAG_engine:
             self.llm, retriever, contextualize_q_prompt
         )
         qa_system_prompt = (
-            "Bạn là trợ lý giải đáp thắc mắc. Sử dụng các tài liệu được cung cấp dưới đây để trả lời câu hỏi.\n\n"
-            "{context}"
+            "Bạn là trợ lý giải đáp thắc mắc. Chỉ sử dụng tài liệu được cung cấp để trả lời.\n"
+            "QUY TẮC:\n"
+            "- Trả lời ngắn gọn, trực tiếp vào câu hỏi.\n"
+            "- KHÔNG giải thích thêm, KHÔNG chào hỏi, KHÔNG gợi ý thêm.\n"
+            "- Nếu không có trong Context, chỉ trả lời: 'Thông tin này không có trong tài liệu.'\n\n"
+            "CONTEXT:\n{context}"
         )
         qa_prompt = ChatPromptTemplate.from_messages([
             ("system", qa_system_prompt),
@@ -131,13 +135,15 @@ class RAG_engine:
             relevant_docs = raw_docs
         relevant_docs = relevant_docs[:4]
 
-        response = question_answer_chain.invoke({
+        result = question_answer_chain.invoke({
             "input": user_input,
             "chat_history": formatted_history,
             "context": relevant_docs
         })
 
-        return response, relevant_docs
+        answer = result if isinstance(result, str) else result.get("output", str(result))
+
+        return answer, relevant_docs
     
     def build_prompt(self, context: str, user_input: str) -> str:
         if is_vietnamese(user_input): # if user input is in Vietnamese, response in Vietnamese
