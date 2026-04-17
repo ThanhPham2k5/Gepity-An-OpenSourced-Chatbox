@@ -7,7 +7,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks, extract_and_link_entities
 from .builder import build_local_response_prompt, build_global_reduce_prompt, build_router_prompt, build_leaf_prompt, build_parent_prompt, build_global_context_from_result, build_local_context_from_result
-from utils import is_vietnamese, setup_constraints
+from utils import is_vietnamese, setup_constraints, extract_json_from_response
 
 from langchain_core.prompts.chat import ChatPromptTemplate
 from database import get_graph_connection, get_vector_from_index
@@ -20,10 +20,10 @@ def _is_running_in_streamlit():
     return get_script_run_ctx() is not None
 
 # Use for Windows IP
-WINDOWS_IP = "172.25.64.1"
+# WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-# WINDOWS_IP = "localhost"
+WINDOWS_IP = "localhost"
 
 class Graph_engine:
     def __init__(self, summary_model_name="qwen2.5:3b", response_model_name="qwen2.5:3b"):
@@ -31,7 +31,7 @@ class Graph_engine:
         # use to response 
         self.response_llm = ChatOllama(
             model=response_model_name, 
-            temperature=0.7, # higher temperature for more creative response generation
+            temperature=0.6, # higher temperature for more creative response generation
             num_ctx=4096,
             base_url=f"http://{WINDOWS_IP}:11434"
         )
@@ -196,23 +196,30 @@ class Graph_engine:
 
         # Tạo In-Memory Graph (Chỉ lấy Entity và quan hệ RELATES_TO)
         project_cypher = f"""
-        CALL gds.graph.project(
+        MATCH (source:Entity)-[r:RELATES_TO]->(target:Entity)
+        WHERE r.weight >= 2
+        WITH gds.graph.project(
             '{project_name}',
-            'Entity',
+            source,
+            target,
             {{
-                RELATES_TO: {{
-                    orientation: 'UNDIRECTED',
-                    properties: {{
-                        weight: {{
-                            property: 'weight',
-                            defaultValue: 1.0
-                        }}
-                    }}
-                }}
+                sourceNodeLabels: labels(source),
+                targetNodeLabels: labels(target),
+                relationshipType: type(r),
+                relationshipProperties: {{ weight: r.weight }}
+            }},
+            {{
+                undirectedRelationshipTypes: ['*'] 
             }}
-        )
+        ) AS g
+        RETURN g.graphName AS graphName, g.nodeCount AS nodes, g.relationshipCount AS rels
         """
-        self.graph.query(project_cypher)
+        
+        try:
+            self.graph.query(project_cypher)
+        except Exception as e:
+            print(f"Lỗi khi tạo Projection: {e}")
+            return
 
         # Chạy leiden và Stream kết quả thẳng về Python
         leiden_cypher = f"""
@@ -446,9 +453,12 @@ class Graph_engine:
         router_info = json.loads(router_content)
 
         question_type = router_info.get("type", "general")
+        reason = router_info.get("reason")
+        print(f"DEBUG: Question type: {question_type}")
+        print(f"DEBUG: Reason: {reason}")
 
         if question_type == "global":
-            raw_results = self.global_search(level=0)
+            raw_results = self.global_search()
             global_context = build_global_context_from_result(raw_results)
 
             if not global_context:
@@ -462,7 +472,7 @@ class Graph_engine:
             prompt = build_global_reduce_prompt(user_input, context=global_context)
             response = self.response_llm.invoke(prompt)
 
-            return "global", response.content, ""
+            return response.content, ""
         elif question_type == "local":
             raw_results = self.local_search(user_input)
             graph_context = build_local_context_from_result(raw_results)
@@ -478,15 +488,15 @@ class Graph_engine:
             prompt = build_local_response_prompt(user_input, context=graph_context)
             response = self.response_llm.invoke(prompt)
 
-            return "local", response.content, raw_results
+            return response.content, raw_results
         else:
             response = self.response_llm.invoke(user_input)
-            return "general", response.content, ""
+            return response.content, ""
         
     def process_single_chunk(self, chunk):
         # Prepare Document and Chunk Data
         doc_source = chunk.metadata.get("source", "unknown")
-        doc_name = chunk.metadata.get("filename") or os.path.basename(doc_source)
+        doc_name = chunk.metadata.get("filename", "unknown")
 
         chunk_text = chunk.page_content
         chunk_page = chunk.metadata.get("page", 0) + 1
@@ -573,22 +583,36 @@ class Graph_engine:
             chain = self.leaf_chain if level == 0 else self.parent_chain
             response = chain.invoke({"community_data": context_str})
 
-            # clean up response
-            content = response.content.replace("```json", "").replace("```", "").strip()
-            info = json.loads(content)
+            info = extract_json_from_response(response.content)
+            
+            full_content = info.get("full_content", "").strip()
+            summary = info.get("summary", "").strip()
+            if not full_content or not summary:
+                raise ValueError("LLM trả về rỗng")
 
             return {
                 "community_id": community_id,
                 "title": info.get("title", f"Cụm {community_group_id}"),
-                "summary": info.get("summary", "unknown"),
-                "full_content": info.get("full_content", "unknown"),
+                "summary": summary,
+                "full_content": full_content,
                 "weight": len(cluster),
                 "entity_names": [c['entity_name'] for c in cluster],
                 "level": level
             }
         except Exception as e:
-            print(f"Lỗi LLM tại community {community_id}: {e}", flush=True)
-            return None
+            print(f"Lỗi LLM tại {community_id}, đang sử dụng nội dung Fallback...")
+            entity_names = [c['entity_name'] for c in cluster]
+            top_entities = ", ".join(entity_names[:5]) # Lấy 5 tên đầu tiên
+            
+            return {
+                "community_id": community_id,
+                "title": f"Cụm thực thể hỗn hợp {community_group_id}",
+                "summary": f"Cụm này bao gồm các thực thể liên quan như {top_entities}.",
+                "full_content": f"Cộng đồng này được hệ thống gom nhóm tự động dựa trên mức độ xuất hiện cùng nhau trong tài liệu. Các thực thể chính đóng vai trò trung tâm bao gồm: {top_entities}. Thông tin chi tiết chưa thể tổng hợp tự động do dữ liệu phân tán.",
+                "weight": len(cluster),
+                "entity_names": entity_names,
+                "level": level
+            }
     
     def summarize_parent_batch(self, batch, level, batch_idx):
             """Hàm hỗ trợ gọi LLM tóm tắt cho một nhóm cụm con"""

@@ -48,15 +48,13 @@ def test_response(engine):
             start_time = time.time()
             
             # Gọi hàm xử lý chính
-            response_type, response, sources = engine.get_response(user_input)
+            response, sources = engine.get_response(user_input)
             
             end_time = time.time()
             duration = end_time - start_time
 
             # In kết quả
             print("-" * 30)
-            if(response_type):
-                print(f"LOẠI CÂU HỎI: {response_type}")
             print(f"CÂU TRẢ LỜI ({duration:.2f} giây):")
             print(response)
             if sources:
