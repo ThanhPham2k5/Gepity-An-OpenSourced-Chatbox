@@ -66,10 +66,10 @@ def extract_and_link_entities(chunk_text: str, gliner_model):
                 sentences.append(s)
 
     # entity labels
-    labels = ["Person","Organization", "Concept", "Technical Term", "Identity Number", "Location", "Event", "Date", "Metric"]
+    labels = ["Person", "Organization", "Concept", "Algorithm", "Framework", "Dataset", "Identity Number", "Location", "Event"]
     
     # extract entities using gliner
-    all_entities_per_sentence = gliner_model.inference(sentences, labels=labels, threshold=0.5, flat_ner=True)
+    all_entities_per_sentence = gliner_model.inference(sentences, labels=labels, threshold=0.7, flat_ner=True)
 
     unique_entities = {}
     relationships = []
@@ -80,13 +80,15 @@ def extract_and_link_entities(chunk_text: str, gliner_model):
         for ent in entities:
             name = ent['text'].strip().title()
             label = ent['label']
+
+            if name.isdigit(): continue
             
             # Lưu thực thể duy nhất cho toàn chunk
             if name not in unique_entities:
                 unique_entities[name] = {
                     "name": name,
                     "label": label,
-                    "description": f"Thực thể loại {label} trích xuất từ văn bản."
+                    "description": f"Thực thể loại {label} trích xuất từ văn bản.",
                 }
             sentence_entities.append(name)
 

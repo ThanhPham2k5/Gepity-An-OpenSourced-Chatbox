@@ -4,46 +4,55 @@ from utils import is_vietnamese
 
 def build_router_prompt() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages([
-            ("system", 
-            """Bạn là một AI Router thông minh cho hệ thống GraphRAG. 
-            Nhiệm vụ của bạn là phân loại câu hỏi của người dùng vào một trong ba nhóm sau:
+        ("system", """Bạn là bộ não điều hướng của hệ thống GraphRAG. Nhiệm vụ của bạn là phân biệt cực kỳ chính xác giữa truy vấn "chi tiết" (local) và "tổng quát" (global).
 
-            1. "local": Truy vấn về các thực thể cụ thể, mối quan hệ hoặc chi tiết có trong tài liệu.
-            2. "global": Truy vấn về tổng quan, xu hướng, tóm tắt hoặc các chủ đề bao quát toàn bộ dữ liệu.
-            3. "general": Các câu chào hỏi, lời cảm ơn, hoặc các câu hỏi không liên quan đến kiến thức trong tài liệu (ví dụ: "Chào bạn", "Bạn là ai?", "Thời tiết thế nào?").
+        Các quy tắc phân loại:
 
-            CHỈ trả về định dạng JSON: {{"type": "local" | "global" | "general", "reason": "giải thích ngắn gọn"}}.
+        1. "local": 
+        - Hỏi về thông tin chi tiết, định nghĩa, danh sách các thành phần, hoặc cách thức hoạt động của một tính năng cụ thể.
+        - Ví dụ: "Các vai trò người dùng là gì?", "Cách đăng ký tài khoản?", "Quyền của giảng viên là gì?", "Dự án A có chức năng gì?". 
+        - Ghi nhớ: Ngay cả khi câu hỏi hỏi về "danh sách" (list) các thực thể trong một hệ thống, đó vẫn là LOCAL.
 
-            Ví dụ:
-            - "Dự án Gepity là gì?" -> {{"type": "local", "reason": "Hỏi về một thực thể cụ thể trong hệ thống"}}
-            - "Tóm tắt các vấn đề chính của tháng này" -> {{"type": "global", "reason": "Yêu cầu tổng hợp dữ liệu toàn cục"}}
-            - "Xin chào, bạn giúp tôi được không?" -> {{"type": "general", "reason": "Chào hỏi xã giao"}}
+        2. "global":
+        - Chỉ dành cho các câu hỏi yêu cầu tóm tắt toàn bộ văn bản, tìm chủ đề chính (themes), hoặc phân tích xu hướng xuyên suốt tài liệu.
+        - Ví dụ: "Tài liệu này nói về cái gì?", "Tóm tắt các điểm chính của toàn bộ dự án", "Có những rủi ro nào được nhắc đến rải rác trong file này?", "Xu hướng phát triển của hệ thống là gì?".
 
-            JSON Result:"""),
-            ("human", "Câu hỏi của người dùng:\n{user_input}")
-        ])
+        3. "general": Các câu chào hỏi hoặc không liên quan tài liệu.
+
+        CHỈ trả về JSON: {{"type": "local" | "global" | "general", "reason": "lý do"}}.
+        """),
+        ("human", "Câu hỏi: {user_input}")
+    ])
 
 def build_leaf_prompt() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages([
-            ("system", """Bạn là chuyên gia phân tích đồ thị tri thức. Dựa trên danh sách các thực thể (Entity) và mô tả của chúng, hãy tóm tắt cụm này.
-            - 'title': Tên chủ đề chung của các thực thể.
-            - 'summary': 1-2 câu mô tả mối liên hệ giữa các thực thể này.
-            - 'full_content': Đoạn văn phân tích chi tiết vai trò của các thực thể và lý do chúng được xếp chung vào một cụm.
-            - Output: BẮT BUỘC là JSON Object bằng Tiếng Việt: {{"title": "", "summary": "", "full_content": ""}} 
-            Tuyệt đối không dùng markdown block.
-            Mọi trường(field) đều BẮT BUỘC phải có."""),
-            ("human", "Danh sách thực thể:\n{community_data}")
-        ])
+        ("system", """Bạn là chuyên gia phân tích dữ liệu đồ thị. Nhiệm vụ của bạn là tóm tắt một cụm thông tin dựa trên danh sách thực thể được cung cấp.
+
+        Mục tiêu: Tạo ra một văn bản phân tích mà Global Search có thể sử dụng để hiểu sâu về cụm này.
+
+        Yêu cầu về nội dung:
+        1. 'title': Tên ngắn gọn, khái quát được bản chất của nhóm.
+        2. 'summary': 3-4 câu tóm tắt cốt lõi.
+        3. 'full_content': Đây là phần quan trọng nhất. Hãy viết một bài phân tích chi tiết. 
+        - BẮT BUỘC lồng ghép tên các thực thể quan trọng vào bài viết.
+        - Giải thích mối quan hệ giữa chúng.
+        - Cuối đoạn, BẮT BUỘC PHẢI thêm mục "Các thực thể chính: [danh sách thực thể]" để đảm bảo Context luôn chứa từ khóa.
+
+        Định dạng trả về: JSON Object Tiếng Việt.
+        {{"title": "...", "summary": "...", "full_content": "..."}}
+        Lưu ý: Không dùng markdown code blocks, không giải thích thêm."""),
+        ("human", "Danh sách thực thể và mô tả:\n{community_data}")
+    ])
 
 def build_parent_prompt() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages([
             ("system", """Bạn là chuyên gia tổng hợp thông tin vĩ mô. Dựa trên thông tin của các cụm chủ đề con (Sub-communities), hãy tổng hợp chúng thành một cụm chủ đề cha (Parent Community).
             - 'title': Tên chủ đề vĩ mô bao trùm tất cả các cụm con.
-            - 'summary': 1-2 câu tóm tắt điểm giao thoa lớn nhất giữa các cụm con.
+            - 'summary': 3-4 câu tóm tắt điểm giao thoa lớn nhất giữa các cụm con.
             - 'full_content': Đoạn văn phân tích bức tranh toàn cảnh, cách các cụm con này ghép lại để tạo thành một chủ đề lớn hơn.
             - Output: BẮT BUỘC là JSON Object bằng Tiếng Việt: {{"title": "", "summary": "", "full_content": ""}}
             Tuyệt đối không dùng markdown block.
-            Mọi trường(field) đều BẮT BUỘC phải có."""),
+            Mọi trường(field) đều BẮT BUỘC phải có thông tin."""),
             ("human", "Thông tin các cụm con:\n{community_data}")
         ])
 
@@ -64,7 +73,7 @@ def build_local_response_prompt(user_input, context):
         - ƯU TIÊN TỐI ĐA việc sử dụng thông tin trong ngữ cảnh được cung cấp.
         - Hãy kết hợp thông tin bao quát từ "Chủ đề liên quan" và số liệu cụ thể từ "Chi tiết văn bản" để tạo ra một câu trả lời toàn diện, logic.
         - Nếu bạn lấy thông tin trực tiếp từ phần "Chi tiết văn bản", bạn BẮT BUỘC phải trích dẫn Nguồn (Ví dụ: Theo [Nguồn 1]...).
-        - NẾU NGỮ CẢNH KHÔNG CÓ CÂU TRẢ LỜI: Hãy nói "Câu hỏi cung cấp quá ít thông tin để có câu trả lời.".
+        - NẾU NGỮ CẢNH KHÔNG CÓ CÂU TRẢ LỜI: Hãy nói "Câu hỏi cung cấp quá ít thông tin để có câu trả lời tốt.".
 
         Ngữ cảnh:
         {context}
@@ -84,7 +93,7 @@ def build_local_response_prompt(user_input, context):
         - PRIORITIZE the provided context above all else.
         - Synthesize the broad understanding from the "Community Insights" with the specific details from the "Text Chunks" to provide a comprehensive answer.
         - If you use specific information from the "Text Chunks", you MUST cite your sources (e.g., According to [Nguồn 1]...).
-        - IF THE CONTEXT DOES NOT CONTAIN THE ANSWER: You must state "The question provided too little information to form an answer.".
+        - IF THE CONTEXT DOES NOT CONTAIN THE ANSWER: You must state "The question provided too little information to form a good answer.".
 
         Context:
         {context}
@@ -173,8 +182,7 @@ def build_global_context_from_result(results):
     # build the context
     final_context = "Dưới đây là các thông tin ngữ cảnh được trích xuất từ cơ sở dữ liệu tri thức:\n\n"
 
-    # Community Insights
-    final_context += "### CÁC CHỦ ĐỀ LIÊN QUAN:\n"
-    final_context += "\n".join([f"- {rec}" for rec in results]) + "\n\n"
+    for i, res in enumerate(results):
+        final_context += f"--- BÁO CÁO CỘNG ĐỒNG {i+1} ---\n{res}\n\n"
 
     return final_context
