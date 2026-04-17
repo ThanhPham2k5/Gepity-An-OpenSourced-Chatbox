@@ -24,6 +24,15 @@ def is_vietnamese(text: str) -> bool:
     vn_chars = "àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắặẳẵặẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ"
     return any(c in text.lower() for c in vn_chars)
 
+def setup_constraints(graph):
+    constraints_cypher = [
+        "CREATE CONSTRAINT document_source_unique IF NOT EXISTS FOR (d:Document) REQUIRE d.source IS UNIQUE;",
+        "CREATE CONSTRAINT chunk_id_unique IF NOT EXISTS FOR (c:Chunk) REQUIRE c.id IS UNIQUE;",
+        "CREATE CONSTRAINT entity_name_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE;"
+    ]
+    for cypher in constraints_cypher:
+        graph.query(cypher)
+
 
 def update_current_chat_to_history():
     if st.session_state.messages:

@@ -113,12 +113,12 @@ with st.sidebar:
 
     # Section: Cài đặt Chunk 
     st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
-    with st.expander("⚙️ Tùy chỉnh Chunk Parameters", expanded=False):
+    with st.expander("Tùy chỉnh Chunk Parameters", expanded=False):
         st.markdown("<span style='font-size: 0.85em; color: gray;'>Thiết lập trước khi upload tài liệu</span>", unsafe_allow_html=True)
         
         chunk_size = st.slider(
             "Chunk Size (Kích thước đoạn)", 
-            min_value=100, max_value=2000, value=500, step=100,
+            min_value=100, max_value=2000, value=800, step=100,
             help="Số lượng ký tự tối đa trong một đoạn văn bản. Càng lớn thì ngữ cảnh càng rộng nhưng tốn RAM."
         )
         
@@ -242,18 +242,19 @@ st.markdown(f"""
 chat_container = st.container()
 with chat_container:
     for msg in st.session_state.messages:
-        is_user = msg["role"] == "user"
-        bubble_class = "user-bubble" if is_user else "ai-bubble"
+        is_user = msg["role"] == 'user'
+        css_class = 'user_bubble' if is_user else 'ai_bubble'
+        avatar = user_bubble if is_user else ai_bubble
         name = "Bạn" if is_user else "Gepity"
+        time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
         if is_user or not st.session_state.get("comparison_mode", False):
             st.markdown(f"""
-                <div class="chat-row {bubble_class}-row">
-                    <div class="chat-bubble {bubble_class}">
-                        <div class="bubble-info">
-                            <span class="bubble-name">{name}</span>
-                            <span class="bubble-time">{msg.get('time', '')}</span>
-                        </div>
-                        <div class="bubble-content">{msg['content']}</div>
+                <div class="bubble-header-{css_class}">
+                    <img src="data:image/png;base64,{avatar}" class="{css_class}-ico"/>
+                    <div class="bubble-answer-{css_class}">
+                        <span class="bubble-name">{name}</span>
+                        <div class="{css_class}">{msg["content"]}</div>
+                        <span class="bubble-time">{time_str}</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
@@ -338,6 +339,8 @@ with st.popover("Đính kèm file", use_container_width=False):
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
         if st.session_state.get("last_file_key") != file_key:
             with st.spinner("Gepity đang xử lý tài liệu..."):
+
+                # basic rag
                 retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
                     upload_file, 
                     chunk_size=st.session_state.get("chunk_size", 500), 
@@ -348,6 +351,20 @@ with st.popover("Đính kèm file", use_container_width=False):
                 st.session_state["last_file_key"] = file_key
                 st.session_state["uploaded_filenames"] = [f.name for f in upload_file]
                 st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}"
+
+                # graph rag
+                # with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
+                #     chunks = st.session_state.graph_engine.process_document(
+                #         uploaded_files=upload_file,
+                #         chunk_size=st.session_state.get("chunk_size", 800), 
+                #         chunk_overlap=st.session_state.get("chunk_overlap", 80)
+                #     )
+                #     chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
+                #     st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
+
+
+
+
             st.rerun()
     else:
         current_key = st.session_state.get("last_file_key")
@@ -364,27 +381,6 @@ with st.popover("Đính kèm file", use_container_width=False):
     if "file_stats" in st.session_state:
         st.success(st.session_state["file_stats"])
 st.markdown('</div>', unsafe_allow_html=True)
-
-# JAVASCRIPT AUTO-SCROLL -------------------------------------------------------
-# only run js when there is message in session, to avoid scroll to bottom when user first open the page
-if st.session_state.messages: 
-    components.html(f"""
-    <script>
-        {len(st.session_state.messages)} //new mess -> +1 len -> re-render
-        setTimeout(function() {{
-            const chatBox = window.parent.document.querySelectorAll(
-                '[data-testid="stVerticalBlockBorderWrapper"]'
-            )[2];
-            
-            const userBubbles = window.parent.document.querySelectorAll('.user_bubble');
-            const lastUserBubble = userBubbles[userBubbles.length - 1];
-            
-            if (lastUserBubble && chatBox) {{
-                lastUserBubble.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-            }}
-        }}, 300);
-    </script>
-    """, height=0)
 
 if user_req:
     current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
@@ -433,3 +429,24 @@ if user_req:
             st.session_state.messages.append({"role": "ai", "content": response, "sources": sources, "time": ai_time})
 
     st.rerun()
+
+# JAVASCRIPT AUTO-SCROLL -------------------------------------------------------
+# only run js when there is message in session, to avoid scroll to bottom when user first open the page
+if st.session_state.messages: 
+    components.html(f"""
+    <script>
+        {len(st.session_state.messages)} //new mess -> +1 len -> re-render
+        setTimeout(function() {{
+            const chatBox = window.parent.document.querySelectorAll(
+                '[data-testid="stVerticalBlockBorderWrapper"]'
+            )[2];
+            
+            const userBubbles = window.parent.document.querySelectorAll('.user_bubble');
+            const lastUserBubble = userBubbles[userBubbles.length - 1];
+            
+            if (lastUserBubble && chatBox) {{
+                lastUserBubble.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+            }}
+        }}, 300);
+    </script>
+    """, height=0)

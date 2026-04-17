@@ -1,5 +1,7 @@
 import os
 import tempfile
+import nltk
+import itertools
 from langchain_community.document_loaders import PDFPlumberLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -38,3 +40,64 @@ def split_docs_into_chunks(docs: list, chunk_size=1000, chunk_overlap=100):
 
     all_chunks = text_splitter.split_documents(docs)
     return all_chunks
+
+nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)
+def extract_and_link_entities(chunk_text: str, gliner_model):
+    lines = chunk_text.split('\n')
+    
+    sentences = []
+    for line in lines:
+        if not line.strip():
+            continue
+            
+        # Use NLTK on each line
+        line_sentences = nltk.sent_tokenize(line)
+        
+        for s in line_sentences:
+            # If a single sentence is still too long
+            # we force-split it by space to ensure we stay under the 384 token limit
+            if len(s.split()) > 250:
+                words = s.split()
+                # Break into chunks of 200 words
+                for i in range(0, len(words), 200):
+                    sentences.append(" ".join(words[i:i+200]))
+            else:
+                sentences.append(s)
+
+    # entity labels
+    labels = ["Person","Organization", "Concept", "Technical Term", "Identity Number", "Location", "Event", "Date", "Metric"]
+    
+    # extract entities using gliner
+    all_entities_per_sentence = gliner_model.inference(sentences, labels=labels, threshold=0.5, flat_ner=True)
+
+    unique_entities = {}
+    relationships = []
+
+    for i, entities in enumerate(all_entities_per_sentence):
+        sentence_entities = []
+
+        for ent in entities:
+            name = ent['text'].strip().title()
+            label = ent['label']
+            
+            # Lưu thực thể duy nhất cho toàn chunk
+            if name not in unique_entities:
+                unique_entities[name] = {
+                    "name": name,
+                    "label": label,
+                    "description": f"Thực thể loại {label} trích xuất từ văn bản."
+                }
+            sentence_entities.append(name)
+
+        # Liên kết các thực thể xuất hiện trong cùng 1 câu
+        if len(sentence_entities) > 1:
+            for src, tgt in itertools.combinations(set(sentence_entities), 2):
+                relationships.append({
+                    "source": src,
+                    "target": tgt,
+                    "type": "CO_OCCURRENCE"
+                })
+
+    return list(unique_entities.values()), relationships
+                

@@ -13,13 +13,14 @@ def get_graph_connection() ->Neo4jGraph | None:
     uri = os.getenv("NEO4J_URI")
     user = os.getenv("NEO4J_USERNAME")
     pwd = os.getenv("NEO4J_PASSWORD")
+    name = os.getenv("NEO4J_DATABASENAME")
     
     try:
         graph = Neo4jGraph(
             url=uri, 
             username=user, 
             password=pwd, 
-            database="7a0ac107",
+            database=name,
             refresh_schema=True
         )
         return graph
@@ -27,23 +28,22 @@ def get_graph_connection() ->Neo4jGraph | None:
         print(f"Lỗi Driver: {e}")
         return None
     
-def get_vector_from_database(embedder) -> Neo4jVector | None:
+def get_vector_from_index(embedder) -> Neo4jVector | None:
     uri = os.getenv("NEO4J_URI")
     user = os.getenv("NEO4J_USERNAME")
     pwd = os.getenv("NEO4J_PASSWORD")
+    name = os.getenv("NEO4J_DATABASENAME")
 
     try:
-        vector = Neo4jVector.from_existing_graph(
-                    embedding=embedder,
-                    search_type="hybrid",
-                    node_label="Entity",  
-                    text_node_properties=["id"],
-                    index_name="entity_vector_index",
-                    embedding_node_property="embedding",
-                    url=uri, 
-                    username=user, 
-                    password=pwd, 
-                    database="7a0ac107",
+
+        vector = Neo4jVector.from_existing_index(
+            embedding=embedder,
+            index_name="chunk_embeddings",
+            search_type="hybrid",
+            url=uri, 
+            username=user, 
+            password=pwd, 
+            database=name,
         )
 
         return vector

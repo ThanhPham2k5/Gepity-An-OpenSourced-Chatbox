@@ -4,6 +4,11 @@
 section[data-testid="stSidebar"] {
   background-color: #2c2f33;
   color: #ffffff;
+  overflow: hidden;
+}
+
+section[data-testid="stSidebar"]:first-child {
+  display: none;
 }
 
 /* Logo và Branding */
@@ -37,7 +42,8 @@ section[data-testid="stSidebar"] {
 }
 
 /* Các tiêu đề mục */
-.sidebar-label {
+.sidebar-label,
+.sections-title {
   font-size: 12px;
   font-weight: 600;
   color: #ffffff;
@@ -100,6 +106,25 @@ section[data-testid="stSidebar"] {
   background-color: #49de80;
   border-radius: 50%;
   box-shadow: 0 0 8px #49de80;
+  animation: blink infinite 2s linear;
+}
+
+@keyframes blink {
+  0% {
+    background-color: rgb(73, 222, 128);
+  }
+  25% {
+    background-color: rgb(73, 222, 128, 0.5);
+  }
+  50% {
+    background-color: rgb(73, 222, 128, 0);
+  }
+  75% {
+    background-color: rgb(73, 222, 128, 0.5);
+  }
+  100% {
+    background-color: rgb(73, 222, 128);
+  }
 }
 
 /* 1. Nút bấm Cuộc trò chuyện mới (Primary) */
@@ -176,9 +201,11 @@ section.stMain
   justify-content: space-between;
   align-items: center;
   position: sticky;
-  top: 0;
   z-index: 99;
   margin-bottom: 2rem;
+}
+
+section[data-testid="stSidebar"][aria-expanded="true"] {
 }
 
 .header-left-main {
@@ -205,6 +232,24 @@ section.stMain
   background-color: #007bff;
   border-radius: 50%;
   margin-right: 8px;
+  animation: header_blink infinite 2s linear;
+}
+@keyframes header_blink {
+  0% {
+    background-color: rgb(0, 123, 255);
+  }
+  25% {
+    background-color: rgb(0, 123, 255, 0.5);
+  }
+  50% {
+    background-color: rgb(0, 123, 255, 0);
+  }
+  75% {
+    background-color: rgb(0, 123, 255, 0.5);
+  }
+  100% {
+    background-color: rgb(0, 123, 255);
+  }
 }
 .header-status-text {
   color: #007bff;
@@ -265,6 +310,7 @@ div[data-testid="column"] .chat-row {
 .bubble-info {
   display: flex;
   justify-content: space-between;
+  gap: 10px;
   margin-bottom: 5px;
   font-size: 0.75rem;
   opacity: 0.8;
@@ -407,4 +453,382 @@ div[data-testid="stExpanderDetails"] blockquote {
   font-size: 0.85rem;
   color: #495057;
   border-radius: 0 4px 4px 0;
+}
+
+/* hotfix css */
+
+/* css lại nút sidebar collapse */
+button[data-testid="stBaseButton-headerNoPadding"] {
+  background-color: #3b3e41;
+  color: #fff;
+}
+
+button[data-testid="stBaseButton-headerNoPadding"]:hover {
+  background-color: #494c4f;
+}
+
+header[data-testid="stHeader"] {
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  visibility: hidden;
+}
+
+/* Xóa padding mặc định của Streamlit */
+.block-container {
+  padding-top: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* css màu nền cho nút so sánh trượt */
+label[data-baseweb="checkbox"] > div:first-child {
+  /* background-color: #007bff; */
+  background-color: #6c757d;
+}
+
+label[data-baseweb="checkbox"]:has(input[aria-checked="true"])
+  > div:first-child {
+  background-color: #007bff;
+}
+
+/* css mũi tên xoay của chunk */
+div[data-testid="stVerticalBlock"]
+  > div:nth-of-type(5)
+  > details
+  > summary:hover
+  > svg {
+  fill: #212529;
+  transition: all 0.1s linear;
+}
+
+/* css các thanh parameter */
+/* div[data-baseweb="slider"] > div:first-child > div {
+  background-color: #007bff;
+} */
+
+/* div[data-baseweb="slider"] > div:first-child > div > div {
+  background-color: #007bff;
+} */
+
+div[data-baseweb="slider"] > div:first-child > div > div > div {
+  color: #212529;
+}
+
+div[data-baseweb="slider"] > div:last-child {
+  color: #212529;
+}
+
+/* css filter file */
+/* div[data-testid="stVerticalBlock"] > div:nth-of-type(8) > div:first-child {
+  background-color: #f8f9fa;
+  border-radius: 12px;
+} */
+
+/* div[data-testid="stVerticalBlock"]
+  > div:nth-of-type(8)
+  > div:first-child
+  > div
+  > div
+  > div
+  > div
+  > div
+  > p {
+  color: #212529;
+} */
+
+/* div[data-testid="stVerticalBlock"] > div:nth-of-type(9) {
+  display: none;
+} */
+
+/* css outline input */
+div[data-testid="stChatInput"]:focus-within > div > div:first-child {
+  border-color: #007bff;
+}
+
+/* css hover add file */
+div[data-testid="stPopover"] > div:first-child > button:hover,
+div[data-testid="stPopover"] > div:first-child > button:active,
+div[data-testid="stPopover"] > div:first-child > button:focus-within,
+div[data-testid="stPopover"] > div:first-child > button:focus {
+  border-color: #007bff;
+  color: #007bff;
+  background-color: transparent;
+}
+
+div[data-testid="stPopover"] > div:first-child > button:focus-visible {
+  box-shadow: #007bff 0px 0px 0px 0.2rem;
+}
+
+/* css upload file */
+div[data-testid="stPopoverBody"] {
+  background-color: rgba(0, 123, 255, 0.1);
+  border: 2px solid rgba(0, 123, 255);
+  border-radius: 8px;
+  color: #212529;
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 40px;
+  padding: 4px;
+  margin-bottom: 10px;
+  gap: 12px;
+  width: 30%;
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > section
+  > div
+  > span
+  > svg {
+  width: 32px;
+  height: 32px;
+  background-color: rgba(0, 123, 255);
+  color: #fff;
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 0 10px 6px rgba(0, 123, 255, 0.2);
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > section
+  > div
+  > div {
+  margin-right: 1rem;
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > section
+  > button {
+  background-color: rgba(40, 166, 69) !important;
+  color: #fff !important;
+  font-size: 1rem;
+  outline: none;
+  border: none;
+  transition: all 0.1s linear;
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > section
+  > button:focus-visible {
+  box-shadow: rgba(40, 166, 69, 0.5) 0px 0px 0px 0.2rem;
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > section
+  > button:hover {
+  transform: translateY(-1px);
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > ul {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > ul
+  > li {
+  background-color: rgba(0, 123, 255, 0.1);
+  border: 2px solid rgba(0, 123, 255);
+  border-radius: 8px;
+  color: #212529;
+  font-size: 1rem;
+  font-weight: 600;
+  /* margin: 0 40px; */
+  padding: 4px;
+  gap: 10px;
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > ul
+  > li
+  > div
+  > div:first-child
+  > svg {
+  width: 32px;
+  height: 32px;
+  background-color: rgba(0, 123, 255);
+  color: #fff;
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 0 10px 6px rgba(0, 123, 255, 0.2);
+}
+
+div[data-testid="stPopoverBody"]
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > div
+  > ul
+  > li
+  > div
+  > div:last-child
+  > button {
+  width: 32px;
+  height: 32px;
+  background-color: rgb(255, 74, 74) !important;
+}
+
+/* ai loading */
+div[data-testid="stSpinner"] {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+div[data-testid="stSpinner"] > div {
+  position: relative !important;
+  height: auto !important;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: row;
+  gap: 10px;
+}
+
+div[data-testid="stSpinner"] i {
+  width: 25px !important;
+  height: 25px !important;
+  border-top-color: #007bff !important;
+}
+
+/* chat css */
+.bubble-header-user_bubble,
+.bubble-header-ai_bubble {
+  display: flex;
+  justify-content: start;
+  align-items: start;
+  gap: 12px;
+  margin: 0 0 0 20px;
+}
+
+.bubble-header-user_bubble {
+  flex-direction: row-reverse;
+  justify-content: end;
+  margin: 0 20px 0 0;
+}
+
+.bubble-name {
+  color: #212529;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.user_bubble-ico,
+.ai_bubble-ico {
+  width: 42px;
+  height: 42px;
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 8px;
+  background-color: rgb(233, 236, 240);
+}
+
+.ai_bubble-ico {
+  background-color: #007bff;
+}
+
+.bubble-answer-user_bubble,
+.bubble-answer-ai_bubble {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: start;
+}
+
+.bubble-answer-user_bubble {
+  align-items: end;
+}
+
+.ai_bubble,
+.user_bubble {
+  background-color: #007bff;
+  color: #fff;
+  padding: 10px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 4px;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  max-width: 600px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.ai_bubble {
+  background-color: #fff;
+  color: #212529;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.bubble-time {
+  color: rgba(0, 0, 0, 0.4);
+  font-size: 1rem;
+  font-weight: 100;
+  margin-bottom: 30px;
+}
+
+/* scroll bar for history */
+div[data-testid="stVerticalBlock"] > div:nth-of-type(7) > div > div {
+  max-height: 200px;
+  overflow: hidden auto;
+  justify-content: start;
 }

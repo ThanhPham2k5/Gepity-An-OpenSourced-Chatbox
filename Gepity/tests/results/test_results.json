@@ -1,0 +1,32 @@
+[
+  {
+    "question": "Thuật toán RAG hoạt động như thế nào?",
+    "response": "Thông tin này không có trong tài liệu.",
+    "evaluation": {
+      "passed": true,
+      "semantic_score": 1.0,
+      "keyword_score": 0.33,
+      "matched_keywords": [
+        "không có"
+      ],
+      "semantic_passed": true,
+      "keyword_passed": true
+    }
+  },
+  {
+    "question": "Hệ thống E-Learn Plus có những stakeholders chính nào?",
+    "response": "Hệ thống E-Learn Plus có các bên liên quan chính bao gồm:\n\n1. Học sinh: Người dùng cuối của hệ thống, cần truy cập và sử dụng dịch vụ học trực tuyến.\n2. Giảng viên: Cần quản lý tài khoản, đăng ký lớp học, và cung cấp nội dung đào tạo cho học sinh.\n3. Quản trị viên: Chức năng quản lý, thiết lập, giám sát và bảo dưỡng hệ thống.\n4. Nhà cung cấp nội dung: Các bên sản xuất và quản lý nội dung học tập mà học sinh tham gia.\n\nĐây đều là các bên liên quan trực tiếp hoặc gián tiếp với hoạt động của hệ thống E-Learn Plus.",
+    "evaluation": {
+      "passed": false,
+      "semantic_score": 0.48,
+      "keyword_score": 0.43,
+      "matched_keywords": [
+        "Học sinh",
+        "Giảng viên",
+        "Quản trị"
+      ],
+      "semantic_passed": false,
+      "keyword_passed": true
+    }
+  }
+]
