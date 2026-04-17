@@ -76,6 +76,6 @@ if __name__ == "__main__":
     # Initialize engine
     engine = Graph_engine()
 
-    # test_extraction(engine)s
+    test_extraction(engine)
 
     test_response(engine)

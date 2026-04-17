@@ -42,13 +42,13 @@ def confirm_action_dialog(action_type):
 if "rag" not in st.session_state:
     st.session_state.rag = RAG_engine()
 
-# if "graph_engine" not in st.session_state:
-#     st.session_state.graph_engine = Graph_engine()
+if "graph_engine" not in st.session_state:
+    st.session_state.graph_engine = Graph_engine()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "retriever" not in st.session_state:
+if "retriever" not in st.session_state: 
     st.session_state.retriever = None
 
 if "vector_store" not in st.session_state:
@@ -62,6 +62,9 @@ if "current_chat_id" not in st.session_state:
 
 if "file_uploader_key" not in st.session_state:
     st.session_state.file_uploader_key = str(uuid.uuid4())
+
+if "is_processing" not in st.session_state:
+    st.session_state.is_processing = False
 
 # LOAD CSS -------------------------------------------------------
 # Get the directory where app.py actually lives
@@ -109,7 +112,22 @@ with st.sidebar:
         st.rerun()
 
     # Comparison Mode Toggle
-    st.toggle("So sánh vector search với hybrid search", key="comparison_mode")
+    st.radio(
+        "Tùy chọn chế độ tìm kiếm:",
+        options=["Vector search", "Hybrid search"],
+        key="core_search_method",
+        horizontal=True
+    )
+    st.radio(
+        "Tùy chọn chế độ truy xuất dữ liệu:",
+        options=[
+            "NormalRAG", 
+            "GraphRAG", 
+            "Cả hai"
+        ],
+        key="rag_architecture",
+        horizontal=True
+    )
 
     # Section: Cài đặt Chunk 
     st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
@@ -119,7 +137,8 @@ with st.sidebar:
         chunk_size = st.slider(
             "Chunk Size (Kích thước đoạn)", 
             min_value=100, max_value=2000, value=800, step=100,
-            help="Số lượng ký tự tối đa trong một đoạn văn bản. Càng lớn thì ngữ cảnh càng rộng nhưng tốn RAM."
+            help="Số lượng ký tự tối đa trong một đoạn văn bản. Càng lớn thì ngữ cảnh càng rộng nhưng tốn RAM.",
+            disabled=st.session_state.is_processing
         )
         
         safe_max_overlap = int(chunk_size / 2)
@@ -132,7 +151,8 @@ with st.sidebar:
             max_value=safe_max_overlap,
             value=safe_default_overlap, 
             step=10,
-            help=f"Số ký tự được giữ lại. Hiện tại tối đa là {safe_max_overlap} (50% của Chunk Size)."
+            help=f"Số ký tự được giữ lại. Hiện tại tối đa là {safe_max_overlap} (50% của Chunk Size).",
+            disabled=st.session_state.is_processing
         )
 
         st.session_state.chunk_size = chunk_size
@@ -243,82 +263,107 @@ chat_container = st.container()
 with chat_container:
     for msg in st.session_state.messages:
         is_user = msg["role"] == 'user'
-        css_class = 'user_bubble' if is_user else 'ai_bubble'
-        avatar = user_bubble if is_user else ai_bubble
-        name = "Bạn" if is_user else "Gepity"
-        time_str = datetime.now().strftime("%H:%M · %d/%m/%Y")
-        if is_user or not st.session_state.get("comparison_mode", False):
+        time_str = msg.get('time', '')
+
+        # -----------------------------------------------------
+        # 1. NẾU LÀ NGƯỜI DÙNG: Luôn vẽ 1 cột bên phải
+        # -----------------------------------------------------
+        if is_user:
             st.markdown(f"""
-                <div class="bubble-header-{css_class}">
-                    <img src="data:image/png;base64,{avatar}" class="{css_class}-ico"/>
-                    <div class="bubble-answer-{css_class}">
-                        <span class="bubble-name">{name}</span>
-                        <div class="{css_class}">{msg["content"]}</div>
+                <div class="bubble-header-user_bubble">
+                    <img src="data:image/png;base64,{user_bubble}" class="user_bubble-ico"/>
+                    <div class="bubble-answer-user_bubble">
+                        <span class="bubble-name">Bạn</span>
+                        <div class="user_bubble">{msg["content"]}</div>
                         <span class="bubble-time">{time_str}</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
 
-            # --- NGUỒN TRÍCH DẪN (STANDARD RAG) ---
-            if not is_user and msg.get("sources"):
-                st.markdown('<div class="source-divider"></div>', unsafe_allow_html=True)
-                with st.expander("📚 Nguồn trích dẫn"):
-                    for i, doc in enumerate(msg["sources"]):
-                        file_name = doc.metadata.get('file_name', 'Tài liệu')
-                        page_num = doc.metadata.get('page', 'N/A')
-                        if isinstance(page_num, int):
-                            page_num += 1 
-                            
-                        st.markdown(f"**Nguồn {i+1} ({file_name} - Trang {page_num}):**")
-                        st.markdown(f"> {doc.page_content}")
-
+        # -----------------------------------------------------
+        # 2. NẾU LÀ AI: Quyết định vẽ 1 hay 2 cột dựa vào cờ is_compare
+        # -----------------------------------------------------
         else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(f"""
-                    <div class="chat-row ai-bubble-row">
-                        <div class="chat-bubble ai-bubble">
-                            <div class="bubble-info">
-                                <span class="bubble-name">📚 Standard RAG</span>
-                                <span class="bubble-time">{msg.get('time', '')}</span>
-                            </div>
-                            <div class="bubble-content">{msg['content']}</div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
+            if msg.get("is_compare"):
+                # === TRƯỜNG HỢP CHIA ĐÔI MÀN HÌNH ===
+                col1, col2 = st.columns(2)
                 
-                if msg.get("sources"):
-                    with st.expander("📚 Nguồn trích dẫn"):
-                        for i, doc in enumerate(msg["sources"]):
-                            file_name = doc.metadata.get('file_name', 'Tài liệu')
-                            page_num = doc.metadata.get('page', 'N/A')
-                            page_num = page_num + 1 if isinstance(page_num, int) else page_num
-                            st.markdown(f"**{file_name} (Trang {page_num})**")
-                            st.markdown(f"> {doc.page_content}")
-
-            with col2:
-                hybrid_content = msg.get("hybrid_content")
-                if hybrid_content:
+                with col1: # CỘT TRÁI (HYBRID RAG - Luôn là Document Object)
                     st.markdown(f"""
-                        <div class="chat-row ai-bubble-row">
-                            <div class="chat-bubble ai-bubble">
-                                <div class="bubble-info">
-                                    <span class="bubble-name">🧠 Hybrid RAG (Vector + BM25)</span>
-                                    <span class="bubble-time">{msg.get('time', '')}</span>
-                                </div>
-                                <div class="bubble-content">{hybrid_content}</div>
+                        <div class="bubble-header-ai_bubble">
+                            <div class="bubble-answer-ai_bubble">
+                                <span class="bubble-name">{msg['left_title']}</span>
+                                <div class="ai_bubble">{msg["left_content"]}</div>
+                                <span class="bubble-time">{time_str}</span>
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
-                
-                    if msg.get("hybrid_sources"):
-                        with st.expander("📚 Nguồn trích dẫn"):
-                            for i, doc in enumerate(msg["hybrid_sources"]):
-                                file_name = doc.metadata.get('file_name', 'Tài liệu')
-                                page_num = doc.metadata.get('page', 'N/A')
-                                page_num = page_num + 1 if isinstance(page_num, int) else page_num
-                                st.markdown(f"**{file_name} (Trang {page_num})**")
+                    if msg.get("left_sources"):
+                        with st.expander("Nguồn (Hybrid RAG)"):
+                            for i, doc in enumerate(msg["left_sources"]):
+                                p = doc.metadata.get('page', 'N/A')
+                                p = p + 1 if isinstance(p, int) else p
+                                f_name = doc.metadata.get('file_name', 'Tài liệu')
+                                st.markdown(f"**{f_name} (Trang {p})**")
                                 st.markdown(f"> {doc.page_content}")
+                                
+                with col2: # CỘT PHẢI (GRAPH RAG - Luôn là Dictionary)
+                    st.markdown(f"""
+                        <div class="bubble-header-ai_bubble">
+                            <div class="bubble-answer-ai_bubble">
+                                <span class="bubble-name">{msg['right_title']}</span>
+                                <div class="ai_bubble">{msg["right_content"]}</div>
+                                <span class="bubble-time">{time_str}</span>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    if msg.get("right_sources"):
+                        with st.expander("Nguồn (GraphRAG)"):
+                            for i, doc in enumerate(msg["right_sources"]):
+                                # Lấy dữ liệu từ Dictionary của GraphRAG
+                                p = doc.get('page_number', 'N/A')
+                                f_name = doc.get('file_name', 'Tài liệu')
+                                score = doc.get('score', 0)
+                                content = doc.get('text', '')
+                                
+                                st.markdown(f"**{f_name} (Trang {p} - Độ tin cậy: {score:.2f})**")
+                                st.markdown(f"> {content}")
+
+            else:
+                # === TRƯỜNG HỢP 1 CỘT (CHẾ ĐỘ ĐƠN LẺ) ===
+                mode_label = f" - {msg.get('mode_name', '')}" if msg.get('mode_name') else ""
+                st.markdown(f"""
+                    <div class="bubble-header-ai_bubble">
+                        <img src="data:image/png;base64,{ai_bubble}" class="ai_bubble-ico"/>
+                        <div class="bubble-answer-ai_bubble">
+                            <span class="bubble-name">Gepity{mode_label}</span>
+                            <div class="ai_bubble">{msg["content"]}</div>
+                            <span class="bubble-time">{time_str}</span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                if msg.get("sources"):
+                    st.markdown('<div class="source-divider"></div>', unsafe_allow_html=True)
+                    with st.expander("Nguồn trích dẫn"):
+                        for i, doc in enumerate(msg["sources"]):
+                            # --- PHÉP THUẬT NẰM Ở ĐÂY: Tự động phân loại dữ liệu ---
+                            if isinstance(doc, dict):
+                                # Nếu là GraphRAG (Dictionary)
+                                p = doc.get('page_number', 'N/A')
+                                f_name = doc.get('file_name', 'Tài liệu')
+                                content = doc.get('text', '')
+                                score_text = f" - Score: {doc.get('score', 0):.2f}"
+                            else:
+                                # Nếu là Vector RAG (Document Object)
+                                p = doc.metadata.get('page', 'N/A')
+                                p = p + 1 if isinstance(p, int) else p
+                                f_name = doc.metadata.get('file_name', 'Tài liệu')
+                                content = doc.page_content
+                                score_text = ""
+                            
+                            st.markdown(f"**Nguồn {i+1} ({f_name} - Trang {p}{score_text}):**")
+                            st.markdown(f"> {content}")
         
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
 # user input
@@ -335,51 +380,86 @@ with st.popover("Đính kèm file", use_container_width=False):
         key=st.session_state.file_uploader_key
     )
 
+    # Đảm bảo string mặc định khớp với các trường hợp bên dưới
+    rag_arch = st.session_state.get("rag_architecture", "NormalRAG")
+    
+    # Cờ báo hiệu xem có cần reload lại trang không
+    needs_rerun = False 
+
     if upload_file:
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
-        if st.session_state.get("last_file_key") != file_key:
-            with st.spinner("Gepity đang xử lý tài liệu..."):
+        st.session_state.is_processing = True
+        # ========================================================
+        # LUỒNG 1: VECTOR RAG (Bán cầu Trái)
+        # ========================================================
+        if "Normal" in rag_arch or "Cả hai" in rag_arch:
+            if st.session_state.get("last_vector_key") != file_key:
+                with st.status("Gepity đang nạp kiến thức Vector...", expanded=True) as status:
+                    for f in upload_file: f.seek(0)
+                    
+                    retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
+                        upload_file, 
+                        chunk_size=st.session_state.get("chunk_size", 500), 
+                        chunk_overlap=st.session_state.get("chunk_overlap", 50)
+                    )
+                    st.session_state.retriever = retriever
+                    st.session_state.vector_store = vector_store
+                    st.session_state["last_vector_key"] = file_key
+                    st.session_state["uploaded_filenames"] = [f.name for f in upload_file]
+                    st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn: {num_chunks}, Số trang: {num_docs}"
+                    
+                    status.update(label=f"Hoàn tất Vector DB! ({num_chunks} đoạn)", state="complete", expanded=False)
+                    needs_rerun = True
 
-                # basic rag
-                retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
-                    upload_file, 
-                    chunk_size=st.session_state.get("chunk_size", 500), 
-                    chunk_overlap=st.session_state.get("chunk_overlap", 50)
-                )
-                st.session_state.retriever = retriever
-                st.session_state.vector_store = vector_store
-                st.session_state["last_file_key"] = file_key
-                st.session_state["uploaded_filenames"] = [f.name for f in upload_file]
-                st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn văn bản: {num_chunks}, Số trang: {num_docs}"
+        # ========================================================
+        # LUỒNG 2: GRAPH RAG (Bán cầu Phải)
+        # ========================================================
+        if "Graph" in rag_arch or "Cả hai" in rag_arch:
+            if st.session_state.get("last_graph_key") != file_key:        
+                with st.status("Gepity đang rút trích Graph cho Neo4j (Sẽ mất thời gian)...", expanded=True) as status:
+                    for f in upload_file: f.seek(0)
+                    
+                    chunks = st.session_state.graph_engine.process_document(
+                        uploaded_files=upload_file,
+                        chunk_size=st.session_state.get("chunk_size", 800), 
+                        chunk_overlap=st.session_state.get("chunk_overlap", 80)
+                    )
+                    chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
+                    st.session_state["last_graph_key"] = file_key
+                    
+                    st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
+                    status.update(label=f"Hoàn tất nạp Neo4j ({chunk_count} chunks)!", state="complete", expanded=False)
+                    needs_rerun = True
 
-                # graph rag
-                # with st.expander("Chi tiết quá trình xây dựng Graph", expanded=True):
-                #     chunks = st.session_state.graph_engine.process_document(
-                #         uploaded_files=upload_file,
-                #         chunk_size=st.session_state.get("chunk_size", 800), 
-                #         chunk_overlap=st.session_state.get("chunk_overlap", 80)
-                #     )
-                #     chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
-                #     st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
-
-
-
-
+        # ========================================================
+        # LOAD LẠI TRANG (Nếu có xử lý file mới)
+        # ==========================================
+        if needs_rerun:
             st.rerun()
+
     else:
-        current_key = st.session_state.get("last_file_key")
+        # ========================================================
+        # DỌN RÁC HIỆN TRƯỜNG KHI NGƯỜI DÙNG XÓA FILE
+        # ========================================================
+        has_vector = "last_vector_key" in st.session_state
+        has_graph = "last_graph_key" in st.session_state
         
-        if current_key:
+        # Nếu phát hiện còn file cũ trong bộ nhớ thì mới dọn dẹp
+        if has_vector or has_graph:
             st.session_state.retriever = None
             st.session_state.vector_store = None
-            del st.session_state["last_file_key"]
-            if "file_stats" in st.session_state:
-                del st.session_state["file_stats"]
-                
+            
+            if has_vector: del st.session_state["last_vector_key"]
+            if has_graph: del st.session_state["last_graph_key"]
+            if "file_stats" in st.session_state: del st.session_state["file_stats"]
+            if "uploaded_filenames" in st.session_state: del st.session_state["uploaded_filenames"]
+            
             st.rerun()
 
+    # Hiển thị thông báo thành công dưới khung Upload
     if "file_stats" in st.session_state:
         st.success(st.session_state["file_stats"])
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 if user_req:
@@ -388,6 +468,8 @@ if user_req:
     
     with st.spinner("Gepity đang suy nghĩ..."):
         ai_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
+        core_method = st.session_state.get("core_search_method", "Hybrid search")
+        rag_arch = st.session_state.get("rag_architecture", "NormalRAG")
 
         vector_search_kwargs = {"k": 3} 
         if filter_choice and filter_choice != "Tất cả":
@@ -398,37 +480,52 @@ if user_req:
             pure_vector_retriever = st.session_state.vector_store.as_retriever(search_kwargs=vector_search_kwargs)
 
         if st.session_state.retriever:
-            for sub_retriever in st.session_state.retriever.retrievers:
-                if hasattr(sub_retriever, "search_kwargs"): 
-                    sub_retriever.search_kwargs = vector_search_kwargs
-                elif hasattr(sub_retriever, "k"): 
-                    sub_retriever.k = 15
+            if hasattr(st.session_state.retriever, "retrievers"): 
+                for sub_retriever in st.session_state.retriever.retrievers:
+                    if hasattr(sub_retriever, "search_kwargs"): 
+                        sub_retriever.search_kwargs = vector_search_kwargs
+                    elif hasattr(sub_retriever, "k"): 
+                        sub_retriever.k = 15
+            elif hasattr(st.session_state.retriever, "search_kwargs"):
+                st.session_state.retriever.search_kwargs = vector_search_kwargs
 
-        if st.session_state.get("comparison_mode", False):
-            
-            res_standard, sources_standard = st.session_state.rag.get_response(
-                user_req, pure_vector_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
+        active_retriever = st.session_state.retriever if core_method == "Hybrid search" else pure_vector_retriever
+        normal_rag_name = f"NormalRAG ({core_method})"
+
+        if "Cả hai" in rag_arch:
+            res_normal, sources_normal = st.session_state.rag.get_response(
+                user_req, retriever=active_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
-            res_hybrid, sources_hybrid = st.session_state.rag.get_response(
-                user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
-            )
+            res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req)
             
             st.session_state.messages.append({
-                "role": "ai",
-                "content": res_standard,
-                "sources": sources_standard,
-                "hybrid_content": res_hybrid,
-                "hybrid_sources": sources_hybrid,
+                "role": "ai", "is_compare": True, 
+                "left_title": normal_rag_name,
+                "left_content": res_normal, "left_sources": sources_normal,
+                "right_title": "GraphRAG",
+                "right_content": res_graph, "right_sources": sources_graph,
                 "time": ai_time
             })
-            
-        else:
-            response, sources = st.session_state.rag.get_response(
-                user_req, st.session_state.retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
-            )
-            st.session_state.messages.append({"role": "ai", "content": response, "sources": sources, "time": ai_time})
 
-    st.rerun()
+        elif "Graph" in rag_arch:
+            res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req)
+            st.session_state.messages.append({
+                "role": "ai", "is_compare": False, 
+                "content": res_graph, "sources": sources_graph, 
+                "time": ai_time, "mode_name": "GraphRAG"
+            })
+
+        else:
+            res_normal, sources_normal = st.session_state.rag.get_response(
+                user_req, retriever=active_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
+            )
+            st.session_state.messages.append({
+                "role": "ai", "is_compare": False, 
+                "content": res_normal, "sources": sources_normal, 
+                "time": ai_time, "mode_name": normal_rag_name
+            })
+
+        st.rerun()
 
 # JAVASCRIPT AUTO-SCROLL -------------------------------------------------------
 # only run js when there is message in session, to avoid scroll to bottom when user first open the page

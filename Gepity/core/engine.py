@@ -17,11 +17,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use for Windows IP
-WINDOWS_IP = "172.25.64.1"
+# WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-# WINDOWS_IP = "localhost"
-MODELS_CACHE = "/home/thanhpham/OpenSource/Gepity-An-OpenSourced-Chatbox/Gepity/models_cache"
+WINDOWS_IP = "localhost"
+MODELS_CACHE = "../../models_cache"
 
 class RAG_engine:
     def __init__(self, model_name="qwen2.5:3b"):
@@ -71,7 +71,11 @@ class RAG_engine:
                 if msg["role"] == "user":
                     formatted_history.append(HumanMessage(content=msg["content"]))
                 elif msg["role"] == "ai":
-                    formatted_history.append(AIMessage(content=msg["content"]))
+                    if msg.get("is_compare"):
+                        combined_content = f"Câu trả lời Normal RAG: {msg.get('left_content', '')}\nCâu trả lời GraphRAG: {msg.get('right_content', '')}"
+                        formatted_history.append(AIMessage(content=combined_content))
+                    else:
+                        formatted_history.append(AIMessage(content=msg.get("content", "")))
 
         if retriever is None:
             if formatted_history:
@@ -88,6 +92,32 @@ class RAG_engine:
                 result = self.llm.invoke(user_input)
                 answer = result.content if hasattr(result, "content") else result
                 return answer, None
+
+        intent_system_prompt = (
+            "Bạn là một bộ phân loại ý định. Nhiệm vụ của bạn là phân tích câu hỏi "
+            "hoặc lời nói của người dùng và quyết định xem nó thuộc loại nào trong 2 loại sau:\n"
+            "1. 'CHITCHAT': Những câu giao tiếp xã giao thông thường hoặc những câu hỏi không liên quan đến tài liệu, lịch sử trò chuyện (VD: Xin chào, bạn khỏe không, cảm ơn, tạm biệt) "
+            "hoặc những câu hỏi chung chung không cần tra cứu tài liệu.\n"
+            "2. 'DOC_SEARCH': Những câu hỏi cần tra cứu thông tin cụ thể, phân tích, hoặc truy vấn kiến thức có liên quan đến tài liệu, lịch sử trò chuyện.\n\n"
+            "Chỉ trả về ĐÚNG 1 TỪ duy nhất: 'CHITCHAT' hoặc 'DOC_SEARCH'."
+        )
+        intent_prompt = ChatPromptTemplate.from_messages([
+            ("system", intent_system_prompt),
+            ("human", "{input}"),
+        ])
+        
+        intent_chain = intent_prompt | self.llm
+        intent_result = intent_chain.invoke({"input": user_input})
+        intent = intent_result.content.strip().upper() if hasattr(intent_result, "content") else str(intent_result).strip().upper()
+
+        if "CHITCHAT" in intent:
+            prompt_chitchat = ChatPromptTemplate.from_messages([
+                ("system", "Bạn là một trợ lý AI thân thiện. Hãy trả lời câu giao tiếp của người dùng một cách tự nhiên."),
+                ("human", "{input}"),
+            ])
+            chain_chitchat = prompt_chitchat | self.llm
+            result = chain_chitchat.invoke({"input": user_input})
+            return result.content if hasattr(result, "content") else result, None
 
         # Conservation RAG
         contextualize_q_system_prompt = (
@@ -160,6 +190,3 @@ class RAG_engine:
             Question: {user_input}
             
             Answer:"""
-
-
-    
