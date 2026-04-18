@@ -24,6 +24,7 @@ def _is_running_in_streamlit():
 
 # Use for WSL IP
 WINDOWS_IP = "localhost"
+MODELS_CACHE = "../../models_cache"
 
 class Graph_engine:
     def __init__(self, summary_model_name="qwen2.5:3b", response_model_name="qwen2.5:3b"):
@@ -71,12 +72,12 @@ class Graph_engine:
         self.leaf_chain = leaf_prompt | self.summary_llm
         self.parent_chain = parent_prompt | self.summary_llm
 
-        os.environ['HF_HOME'] = '../../models_cache'
+        os.environ['HF_HOME'] = MODELS_CACHE
         self.embedder = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
             model_kwargs={"device": "cpu", "token": os.getenv("HF_TOKEN")},
             encode_kwargs={"normalize_embeddings": True},
-            cache_folder="../../models_cache"
+            cache_folder= MODELS_CACHE
         )
 
         self.gliner_model = GLiNER.from_pretrained("urchade/gliner_multi")
@@ -92,6 +93,8 @@ class Graph_engine:
         return all_chunks
 
     def sync_to_graph(self, all_chunks):
+        # TODO: add processed document list to avoid reprocessing the same document which leads to bloat and noise
+
         in_streamlit = _is_running_in_streamlit()
 
         if not self.graph:
@@ -261,20 +264,6 @@ class Graph_engine:
                 else:
                     print(msg)
 
-        # parallelize llm call
-        # with ThreadPoolExecutor(max_workers=5) as executor:
-        #     future_to_complete = {executor.submit(self.process_community_worker, rec, 0): rec for rec in results}
-            
-        #     for future in as_completed(future_to_complete):
-        #         res = future.result()
-        #         if res:
-        #             processed_communities.append(res)
-        #             msg = f"Tiến độ: đã xử lý {len(processed_communities)} community"
-        #             if in_streamlit:
-        #                 status_text.text(msg)
-        #             else:
-        #                 print(msg, flush=True)
-
         # single batch query
         if processed_communities:
             save_batch_cypher = """
@@ -340,18 +329,6 @@ class Graph_engine:
             result = self.summarize_parent_batch(batch, current_level, i)
             if result:
                 parent_results.append(result)
-
-        # parallelize llm call
-        # with ThreadPoolExecutor(max_workers=5) as executor:
-        #     future_to_batch = {
-        #         executor.submit(self.summarize_parent_batch, batch, current_level, i): i 
-        #         for i, batch in enumerate(batches)
-        #     }
-            
-        #     for future in as_completed(future_to_batch):
-        #         res = future.result()
-        #         if res:
-        #             parent_results.append(res)
 
         # single batch query
         if parent_results:
@@ -495,9 +472,11 @@ class Graph_engine:
             return response.content, []
         
     def process_single_chunk(self, chunk):
+        #DEBUG
+        print(f"DEBUG: chunk metadata: {chunk.metadata}")
         # Prepare Document and Chunk Data
         doc_source = chunk.metadata.get("source", "unknown")
-        doc_name = chunk.metadata.get("filename", "unknown")
+        # doc_name = chunk.metadata.get("filename", "unknown")
 
         chunk_text = chunk.page_content
         chunk_page = chunk.metadata.get("page", 0) + 1
@@ -529,7 +508,7 @@ class Graph_engine:
                 def write_transaction(tx):
                     sync_query = """
                     // Create Document and Chunk
-                    MERGE (d:Document {source: $doc_source}) SET d.name = $doc_name
+                    MERGE (d:Document {source: $doc_source}) SET d.name = $doc_source
                     MERGE (c:Chunk {id: $chunk_id})
                     SET c.text = $chunk_text, c.embedding = $chunk_embedding, c.page = $chunk_page
                     MERGE (c)-[:PART_OF]->(d)
@@ -553,7 +532,6 @@ class Graph_engine:
 
                     tx.run(sync_query, {
                         "doc_source": doc_source,
-                        "doc_name": doc_name,
                         "chunk_id": chunk_id,
                         "chunk_text": chunk_text,
                         "chunk_page": chunk_page,
