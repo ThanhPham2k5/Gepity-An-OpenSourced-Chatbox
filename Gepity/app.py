@@ -1,3 +1,5 @@
+import time
+
 from sqlalchemy import all_
 import streamlit as st
 import os
@@ -393,20 +395,20 @@ with st.popover("Đính kèm file", use_container_width=False):
                 if new_files:
                     with st.status(f"Gepity đang nạp thêm {len(new_files)} tài liệu vào Vector...", expanded=True) as status:
                         for f in new_files: f.seek(0)
-                        
+                        start_time = time.time()
                         retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
                             new_files,
                             chunk_size=st.session_state.get("chunk_size", 500), 
                             chunk_overlap=st.session_state.get("chunk_overlap", 50),
                             existing_vector_store=st.session_state.get("vector_store")
                         )
-                        
+                        end_time = time.time()
                         st.session_state.retriever = retriever
                         st.session_state.vector_store = vector_store
                         
                         st.session_state["uploaded_filenames"] = already_processed + [f.name for f in new_files]
                         total_files = len(st.session_state["uploaded_filenames"])
-                        st.session_state["file_stats"] = f"Đã cập nhật DB! Tổng số tài liệu hiện có: {total_files}"
+                        st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Tổng số chunk: {num_chunks}, Thời gian: {end_time - start_time:.2f} giây"
                         
                         status.update(label=f"Hoàn tất nạp thêm Vector DB!", state="complete", expanded=False)
                 
@@ -421,18 +423,27 @@ with st.popover("Đính kèm file", use_container_width=False):
                 if new_files_graph:
                     with st.status(f"Gepity đang rút trích Graph cho Neo4j ({len(new_files_graph)} file mới)...", expanded=True) as status:
                         for f in new_files_graph: f.seek(0)
-                        
-                        chunks = st.session_state.graph_engine.process_document(
+                        start_time = time.time()
+                        docs_with_chunks = st.session_state.graph_engine.process_document(
                             uploaded_files=new_files_graph,
                             chunk_size=st.session_state.get("chunk_size", 800), 
                             chunk_overlap=st.session_state.get("chunk_overlap", 80)
                         )
-                        chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
+                        total_processed_chunks = 0
+                        for filename, chunks in docs_with_chunks.items():
+                            st.write(f"Đang xử lý tài liệu: {filename}")
+                            
+                            st.session_state.graph_engine.sync_to_graph(chunks, source=filename)
+                            
+                            total_processed_chunks += len(chunks)
                         
+                        st.session_state.graph_engine.create_vector_indexes()
+                        st.session_state.graph_engine.create_fulltext_index()
+                        end_time = time.time()
+
                         st.session_state["uploaded_filenames_graph"] = already_processed_graph + [f.name for f in new_files_graph]
-                        
-                        st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
-                        status.update(label=f"Hoàn tất nạp Neo4j ({chunk_count} chunks)!", state="complete", expanded=False)
+                        st.session_state["file_stats"] = f"Đã trích xuất và kết nối các thực thể trên Neo4j! Tổng số chunk: {total_processed_chunks}, Thời gian: {end_time - start_time:.2f} giây"
+                        status.update(label=f"Hoàn tất nạp Neo4j ({total_processed_chunks} chunks)!", state="complete", expanded=False)
                 
                 # Cập nhật key và bật cờ reload cho Graph
                 st.session_state["last_graph_key"] = file_key

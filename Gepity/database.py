@@ -28,25 +28,3 @@ def get_graph_connection() ->Neo4jGraph | None:
         print(f"Lỗi Driver: {e}")
         return None
     
-def get_vector_from_index(embedder) -> Neo4jVector | None:
-    uri = os.getenv("NEO4J_URI")
-    user = os.getenv("NEO4J_USERNAME")
-    pwd = os.getenv("NEO4J_PASSWORD")
-    name = os.getenv("NEO4J_DATABASENAME")
-
-    try:
-
-        vector = Neo4jVector.from_existing_index(
-            embedding=embedder,
-            index_name="chunk_embeddings",
-            search_type="hybrid",
-            url=uri, 
-            username=user, 
-            password=pwd, 
-            database=name,
-        )
-
-        return vector
-    except Exception as e:
-        print(f"Lỗi Driver: {e}")
-        return None

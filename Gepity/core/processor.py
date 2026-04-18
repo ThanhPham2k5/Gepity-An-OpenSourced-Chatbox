@@ -23,10 +23,16 @@ def get_docs_from_uploaded_files(uploaded_files: list):
             elif suffix.lower() in [".docx", ".doc"]:
                 loader = Docx2txtLoader(tmp_file_path)
             else:
-                continue  # Skip unsupported file types
+                continue 
 
-            # Load the document and split it into chunks
-            all_docs.extend(loader.load())
+            docs = loader.load()
+            
+            original_name = uploaded_file.name
+            for doc in docs:
+                doc.metadata["source"] = original_name
+                doc.metadata["filename"] = original_name 
+            
+            all_docs.extend(docs)
         finally:
             # Clean up the temporary file
             if(os.path.exists(tmp_file_path)):

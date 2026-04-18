@@ -3,22 +3,43 @@ from core.processor import split_docs_into_chunks
 from langchain_community.document_loaders import PyPDFLoader
 import time
 
-def test_extraction(engine):    
-    # Load test file
-    print("--- Đang load file ---")
-    loader = PyPDFLoader("../LAB_01_Software Requirements Specification.pdf")
-    documents = loader.load()
+def test_extraction(engine):
+    file_paths = [
+        "../LAB_01_Software Requirements Specification.pdf",
+        "../project_report_final.pdf"
+    ]   
+    docs_with_chunks = {}
 
-    # Get the chunks
-    chunks = split_docs_into_chunks(documents, chunk_size=400, chunk_overlap=40)
-    print(f"Số lượng chunks: {len(chunks)}")
+    print("--- Đang load và phân mảnh file ---")
+    for path in file_paths:
+        loader = PyPDFLoader(path)
+        pages = loader.load() # pages là một list các Document
+        
+        if not pages:
+            continue
+            
+        # Lấy source từ metadata của trang đầu tiên
+        source_name = pages[0].metadata.get('source', path)
+        
+        # Phân mảnh toàn bộ các trang của file này
+        chunks = split_docs_into_chunks(pages, chunk_size=800, chunk_overlap=50)
+        # if source_name not in docs_with_chunks:
+        #     docs_with_chunks[source_name] = []
+        # docs_with_chunks[source_name].extend(chunks)
+        docs_with_chunks[source_name] = chunks
     
     # Run the high-speed pipeline
     print("--- Đang bắt đầu sync ---")
     start_time = time.time()
     
-    engine.sync_to_graph(chunks)
+    for filename, chunks in docs_with_chunks.items():
+        print(f"Đang xử lý tài liệu: {filename}")
+
+        engine.sync_to_graph(chunks, source=filename)
     
+    engine.create_vector_indexes()
+    engine.create_fulltext_index()
+
     end_time = time.time()
     print(f"--- Hoàn thành trong {end_time - start_time:.2f} giây ---")
 
@@ -48,7 +69,7 @@ def test_response(engine):
             start_time = time.time()
             
             # Gọi hàm xử lý chính
-            response, sources = engine.get_response(user_input)
+            response, sources = engine.get_response(user_input, "LAB_01_Software Requirements Specification.pdf")
             
             end_time = time.time()
             duration = end_time - start_time
@@ -74,6 +95,6 @@ if __name__ == "__main__":
     # Initialize engine
     engine = Graph_engine()
 
-    test_extraction(engine)
+    # test_extraction(engine)
 
     test_response(engine)
