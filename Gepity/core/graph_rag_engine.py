@@ -10,7 +10,7 @@ from .builder import build_local_response_prompt, build_global_reduce_prompt, bu
 from utils import is_vietnamese, setup_constraints, extract_json_from_response
 
 from langchain_core.prompts.chat import ChatPromptTemplate
-from database import get_graph_connection, get_vector_from_index
+from database import get_graph_connection
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from dotenv import load_dotenv
@@ -150,38 +150,10 @@ class Graph_engine:
             print("Đã hoàn thành xử lý toàn bộ chunks!")
 
         # create vector index for graph
-        self.create_vector_indexes()
+        # self.create_vector_indexes()
         self.build_community(source)
-    
-    def create_vector_indexes(self):
-        """Creates native vector indexes in Neo4j for Chunks and Entities"""
-        # 768 is the standard dimension for paraphrase-multilingual-mpnet-base-v2
-        cypher_queries = [
-            """
-            CREATE VECTOR INDEX chunk_embeddings IF NOT EXISTS
-            FOR (c:Chunk) ON (c.embedding)
-            OPTIONS {indexConfig: {
-              `vector.dimensions`: 768,
-              `vector.similarity_function`: 'cosine'
-            }}
-            """,
-            """
-            CREATE VECTOR INDEX entity_embeddings IF NOT EXISTS
-            FOR (e:Entity) ON (e.embedding)
-            OPTIONS {indexConfig: {
-              `vector.dimensions`: 768,
-              `vector.similarity_function`: 'cosine'
-            }}
-            """
-        ]
-        for query in cypher_queries:
-            try:
-                self.graph.query(query)
-            except Exception as e:
-                print(f"Index creation note: {e}")
 
     def build_community(self, doc_source):
-        """Phát hiện và tóm tắt cộng đồng theo cấu trúc Hierarchical Lexical Graph"""
 
         in_streamlit = _is_running_in_streamlit()
         if not self.graph:
@@ -300,9 +272,6 @@ class Graph_engine:
 
 
     def build_parent_communities(self, doc_source, child_community_ids, current_level=1):
-        """
-        Xây dựng Parent Communities bằng cách gom các cụm con và tóm tắt song song.
-        """
 
         print(f"Đang tổng hợp Level {current_level} Communities...")
 
@@ -391,7 +360,7 @@ class Graph_engine:
         return results
 
     def local_search(self, user_input, doc_source=None, threshold=0.65, top_k=5):
-        # embed usesr input for vector search
+        # embed user input for vector search
         query_vector = self.embedder.embed_query(user_input)
         
         # use cypher to query relevant chunks, entities and community summaries for said entities
@@ -402,9 +371,9 @@ class Graph_engine:
         WHERE score >= $threshold {source_filter}
 
         OPTIONAL MATCH (chunk)-[:HAS_ENTITY]->(e:Entity)
-        WHERE e.source = chunk.source OR e.source IS NULL
+        WHERE e.source = chunk.source
         OPTIONAL MATCH (e)-[:IN_COMMUNITY]->(comm:Community)
-        WHERE comm.source = chunk.source OR comm.source IS NULL
+        WHERE comm.source = chunk.source
         
         RETURN
             chunk.text as text,
@@ -423,8 +392,111 @@ class Graph_engine:
         })
         
         return results
+    
+    def local_hybrid_search(self, user_input, doc_source=None, threshold=0.65, top_k=5):
+        # embed user input for vector search
+        query_vector = self.embedder.embed_query(user_input)
         
-    def get_response(self, user_input, doc_source=None):
+        # vector search
+        source_filter = "AND chunk.source = $doc_source" if doc_source else ""
+        vector_query = f"""
+        CALL db.index.vector.queryNodes('chunk_embeddings', $top_k, $query_vector)
+        YIELD node AS chunk, score
+        WHERE score >= $threshold {source_filter}
+        RETURN 
+            elementId(chunk) AS chunk_id, 
+            chunk.text AS text, 
+            chunk.page AS page_number, 
+            chunk.source AS source_file, 
+            score AS vector_score
+        """
+        # get chunks from vector result
+        vector_results = self.graph.query(vector_query, {
+            "query_vector": query_vector,
+            "top_k": top_k,
+            "threshold": threshold,
+            "doc_source": doc_source
+        })
+
+        # keyword search
+        keyword_query = f"""
+        CALL db.index.fulltext.queryNodes('chunk_text_index', $user_input, {{limit: $top_k}})
+        YIELD node AS chunk, score
+        WHERE 1=1 {source_filter}
+        RETURN 
+            elementId(chunk) AS chunk_id, 
+            chunk.text AS text, 
+            chunk.page AS page_number, 
+            chunk.source AS source_file, 
+            score AS keyword_score
+        """
+        # get chunks from keyword result
+        keyword_results = self.graph.query(keyword_query, {
+            "user_input": user_input,
+            "top_k": top_k,
+            "doc_source": doc_source
+        })
+
+        # combine with Reciprocal Rank Fusion
+        # Công thức: RRF_score = 1 / (k + rank)
+        rrf_k = 60 # constant
+        combined_results = {}
+
+        # Xử lý rank cho Vector
+        for rank, res in enumerate(vector_results, start = 1):
+            chunk_id = res['chunk_id']
+            if chunk_id not in combined_results:
+                combined_results[chunk_id] = {'data': res, 'rrf_score': 0}
+            combined_results[chunk_id]['rrf_score'] += 1.0 / (rrf_k + rank)
+
+        # Xử lý rank cho Keyword
+        for rank, res in enumerate(keyword_results, start = 1):
+            chunk_id = res['chunk_id']
+            if chunk_id not in combined_results:
+                combined_results[chunk_id] = {'data': res, 'rrf_score': 0}
+            combined_results[chunk_id]['rrf_score'] += 1.0 / (rrf_k + rank)
+
+        # Sắp xếp lại dựa trên RRF score và lấy top_k
+        sorted_combined = sorted(combined_results.values(), key=lambda x: x['rrf_score'], reverse=True)[:top_k]
+
+        final_results = []
+        if sorted_combined:
+            chunk_ids = [item['data']['chunk_id'] for item in sorted_combined]
+            
+            # get related entities and communities
+            enrichment_query = """
+            MATCH (chunk) WHERE elementId(chunk) IN $chunk_ids
+            OPTIONAL MATCH (chunk)-[:HAS_ENTITY]->(e:Entity)
+            WHERE e.source = chunk.source
+            OPTIONAL MATCH (e)-[:IN_COMMUNITY]->(comm:Community)
+            WHERE comm.source = chunk.source
+            RETURN 
+                elementId(chunk) AS chunk_id,
+                collect(DISTINCT e.name) as related_entities,
+                collect(DISTINCT comm.summary) as related_community_summaries
+            """
+            enriched_data = self.graph.query(enrichment_query, {"chunk_ids": chunk_ids})
+            
+            # Map enrichment data
+            enrichment_map = {row['chunk_id']: row for row in enriched_data}
+            
+            for item in sorted_combined:
+                base_data = item['data']
+                c_id = base_data['chunk_id']
+                enrich_info = enrichment_map.get(c_id, {'related_entities': [], 'related_community_summaries': []})
+                
+                final_results.append({
+                    'text': base_data['text'],
+                    'page_number': base_data.get('page_number'),
+                    'source_file': base_data.get('source_file'),
+                    'score': item['rrf_score'],
+                    'related_entities': enrich_info['related_entities'],
+                    'related_community_summaries': enrich_info['related_community_summaries']
+                })
+
+        return final_results
+        
+    def get_response(self, user_input, doc_source=None, hybrid_search=False):
         if not self.graph:
             st.error("Không thể kết nối đến Neo4j")
             if is_vietnamese(user_input):
@@ -461,7 +533,11 @@ class Graph_engine:
 
             return response.content, []
         elif question_type == "local":
-            raw_results = self.local_search(user_input, doc_source)
+            if not hybrid_search:
+                raw_results = self.local_search(user_input, doc_source)
+            else:
+                raw_results = self.local_hybrid_search(user_input, doc_source)
+
             graph_context = build_local_context_from_result(raw_results)
 
             if not graph_context:
@@ -482,8 +558,6 @@ class Graph_engine:
         
     def process_single_chunk(self, chunk, doc_source):
         # Prepare Document and Chunk Data
-        # doc_source = chunk.metadata.get("source", "unknown")
-
         chunk_text = chunk.page_content
         chunk_page = chunk.metadata.get("page", 0) + 1
         chunk_id = hashlib.md5(chunk_text.encode('utf-8')).hexdigest()
@@ -559,10 +633,9 @@ class Graph_engine:
         if len(cluster) < 4:
             return None
         
-        # Làm sạch tên file để làm ID (bỏ khoảng trắng và đuôi file nếu cần)
+        # clean doc_source
         clean_source = str(doc_source).replace(" ", "_").replace(".pdf", "")
-        
-        # TẠO ID DUY NHẤT: Thêm prefix của file vào ID
+        # create id with source
         community_id = f"{clean_source}_COMM_L{level}_{community_group_id}"
 
         # Chuẩn bị dữ liệu cho LLM
@@ -604,11 +677,10 @@ class Graph_engine:
             }
     
     def summarize_parent_batch(self, batch, level, batch_idx, doc_source):
-        """Hàm hỗ trợ gọi LLM tóm tắt cho một nhóm cụm con"""
-        # Làm sạch tên file để làm ID (bỏ khoảng trắng và đuôi file nếu cần)
-        clean_source = str(doc_source).replace(" ", "_").replace(".pdf", "")
         
-        # TẠO ID DUY NHẤT: Thêm prefix của file vào ID
+        # clean doc_source
+        clean_source = str(doc_source).replace(" ", "_").replace(".pdf", "")
+        # create id with source
         parent_id = f"{clean_source}_COMM_L{level}_{batch_idx}"
         context_str = "\n".join([f"- Cụm {c['title']}: {c['summary']}" for c in batch])
 
@@ -648,3 +720,40 @@ class Graph_engine:
         """
 
         self.graph.query(delete_cypher)
+
+    def create_vector_indexes(self):
+        # 768 is the standard dimension for paraphrase-multilingual-mpnet-base-v2
+        cypher_queries = [
+            """
+            CREATE VECTOR INDEX chunk_embeddings IF NOT EXISTS
+            FOR (c:Chunk) ON (c.embedding)
+            OPTIONS {indexConfig: {
+              `vector.dimensions`: 768,
+              `vector.similarity_function`: 'cosine'
+            }}
+            """,
+            """
+            CREATE VECTOR INDEX entity_embeddings IF NOT EXISTS
+            FOR (e:Entity) ON (e.embedding)
+            OPTIONS {indexConfig: {
+              `vector.dimensions`: 768,
+              `vector.similarity_function`: 'cosine'
+            }}
+            """
+        ]
+        
+        for query in cypher_queries:
+            try:
+                self.graph.query(query)
+            except Exception as e:
+                print(f"Index creation note: {e}")
+
+    def create_fulltext_index(self):
+        cypher_query = """
+        CREATE FULLTEXT INDEX chunk_text_index FOR (c:Chunk) ON EACH [c.text]
+        """
+
+        try:
+            self.graph.query(cypher_query)
+        except Exception as e:
+            print(f"Index creation note: {e}")

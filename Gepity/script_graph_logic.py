@@ -36,8 +36,10 @@ def test_extraction(engine):
         print(f"Đang xử lý tài liệu: {filename}")
 
         engine.sync_to_graph(chunks, source=filename)
-    # engine.sync_to_graph(chunks)
     
+    engine.create_vector_indexes()
+    engine.create_fulltext_index()
+
     end_time = time.time()
     print(f"--- Hoàn thành trong {end_time - start_time:.2f} giây ---")
 
@@ -67,7 +69,7 @@ def test_response(engine):
             start_time = time.time()
             
             # Gọi hàm xử lý chính
-            response, sources = engine.get_response(user_input, "../project_report_final.pdf")
+            response, sources = engine.get_response(user_input, "LAB_01_Software Requirements Specification.pdf")
             
             end_time = time.time()
             duration = end_time - start_time

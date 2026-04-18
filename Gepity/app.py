@@ -442,7 +442,9 @@ with st.popover("Đính kèm file", use_container_width=False):
                         st.session_state.graph_engine.sync_to_graph(chunks, source=filename)
                         
                         total_processed_chunks += len(chunks)
-
+                    
+                    st.session_state.graph_engine.create_vector_indexes()
+                    st.session_state.graph_engine.create_fulltext_index()
                     end_time = time.time()
 
                     st.session_state["last_graph_key"] = file_key
