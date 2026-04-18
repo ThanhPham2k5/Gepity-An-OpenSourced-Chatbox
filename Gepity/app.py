@@ -1,3 +1,5 @@
+import time
+
 from sqlalchemy import all_
 import streamlit as st
 import os
@@ -396,17 +398,22 @@ with st.popover("Đính kèm file", use_container_width=False):
             if st.session_state.get("last_vector_key") != file_key:
                 with st.status("Gepity đang nạp kiến thức Vector...", expanded=True) as status:
                     for f in upload_file: f.seek(0)
-                    
+
+                    start_time = time.time()
+
                     retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
                         upload_file, 
                         chunk_size=st.session_state.get("chunk_size", 500), 
                         chunk_overlap=st.session_state.get("chunk_overlap", 50)
                     )
+
+                    end_time = time.time()
+
                     st.session_state.retriever = retriever
                     st.session_state.vector_store = vector_store
                     st.session_state["last_vector_key"] = file_key
                     st.session_state["uploaded_filenames"] = [f.name for f in upload_file]
-                    st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn: {num_chunks}, Số trang: {num_docs}"
+                    st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Tổng số chunk: {num_chunks}, Thời gian: {end_time - start_time:.2f} giây"
                     
                     status.update(label=f"Hoàn tất Vector DB! ({num_chunks} đoạn)", state="complete", expanded=False)
                     needs_rerun = True
@@ -418,17 +425,30 @@ with st.popover("Đính kèm file", use_container_width=False):
             if st.session_state.get("last_graph_key") != file_key:        
                 with st.status("Gepity đang rút trích Graph cho Neo4j (Sẽ mất thời gian)...", expanded=True) as status:
                     for f in upload_file: f.seek(0)
-                    
-                    chunks = st.session_state.graph_engine.process_document(
+
+                    start_time = time.time()
+
+                    docs_with_chunks = st.session_state.graph_engine.process_document(
                         uploaded_files=upload_file,
                         chunk_size=st.session_state.get("chunk_size", 800), 
                         chunk_overlap=st.session_state.get("chunk_overlap", 80)
                     )
-                    chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
+
+                    total_processed_chunks = 0
+                    # process each file from multiple files
+                    for filename, chunks in docs_with_chunks.items():
+                        st.write(f"Đang xử lý tài liệu: {filename}")
+                        
+                        st.session_state.graph_engine.sync_to_graph(chunks, source=filename)
+                        
+                        total_processed_chunks += len(chunks)
+
+                    end_time = time.time()
+
                     st.session_state["last_graph_key"] = file_key
-                    
-                    st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
-                    status.update(label=f"Hoàn tất nạp Neo4j ({chunk_count} chunks)!", state="complete", expanded=False)
+                    st.session_state["file_stats"] = f"Đã trích xuất và kết nối các thực thể trên Neo4j! Tổng số chunk: {total_processed_chunks}, Thời gian: {end_time - start_time:.2f} giây"
+                    status.update(label=f"Hoàn tất nạp Neo4j ({total_processed_chunks} chunks)!", state="complete", expanded=False)
+
                     needs_rerun = True
 
         # ========================================================
