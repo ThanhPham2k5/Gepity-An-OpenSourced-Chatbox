@@ -100,15 +100,7 @@ with st.sidebar:
         
         st.session_state.messages = []
         st.session_state.current_chat_id = None
-        st.session_state.retriever = None
-        st.session_state.vector_store = None
         st.session_state.file_uploader_key = str(uuid.uuid4())
-        if "last_file_key" in st.session_state:
-            del st.session_state["last_file_key"]
-        if "file_stats" in st.session_state:
-            del st.session_state["file_stats"]
-        if "uploaded_filenames" in st.session_state:
-            del st.session_state["uploaded_filenames"]
         st.rerun()
 
     # Comparison Mode Toggle
@@ -167,14 +159,8 @@ with st.sidebar:
                 
                 st.session_state.messages = chat['messages'].copy()
                 st.session_state.current_chat_id = chat['id']
-                st.session_state.retriever = chat.get('retriever')
-                st.session_state.vector_store = chat.get('vector_store')
-                st.session_state['last_file_key'] = chat.get('last_file_key')
-                st.session_state['uploaded_filenames'] = chat.get('uploaded_filenames', [])
-                st.session_state['file_uploader_key'] = chat.get('file_uploader_key') or str(uuid.uuid4())
                 if "file_stats" in st.session_state:
                     del st.session_state["file_stats"]
-
                 st.rerun()
 
     # Bộ lọc tài liệu
@@ -387,73 +373,78 @@ with st.popover("Đính kèm file", use_container_width=False):
     needs_rerun = False 
 
     if upload_file:
+        # Tạo chìa khóa duy nhất cho toàn bộ cục file hiện tại
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
-        st.session_state.is_processing = True
-        # ========================================================
-        # LUỒNG 1: VECTOR RAG (Bán cầu Trái)
-        # ========================================================
-        if "Normal" in rag_arch or "Cả hai" in rag_arch:
-            if st.session_state.get("last_vector_key") != file_key:
-                with st.status("Gepity đang nạp kiến thức Vector...", expanded=True) as status:
-                    for f in upload_file: f.seek(0)
-                    
-                    retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
-                        upload_file, 
-                        chunk_size=st.session_state.get("chunk_size", 500), 
-                        chunk_overlap=st.session_state.get("chunk_overlap", 50)
-                    )
-                    st.session_state.retriever = retriever
-                    st.session_state.vector_store = vector_store
-                    st.session_state["last_vector_key"] = file_key
-                    st.session_state["uploaded_filenames"] = [f.name for f in upload_file]
-                    st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Số đoạn: {num_chunks}, Số trang: {num_docs}"
-                    
-                    status.update(label=f"Hoàn tất Vector DB! ({num_chunks} đoạn)", state="complete", expanded=False)
-                    needs_rerun = True
+        
+        run_vector = ("Normal" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_vector_key") != file_key
+        run_graph = ("Graph" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_graph_key") != file_key
+
+        # Nếu có ít nhất 1 luồng cần chạy, ta mới khóa UI và xử lý
+        if run_vector or run_graph:
+            st.session_state.is_processing = True
+
+            # ========================================================
+            # LUỒNG 1: VECTOR RAG (Bán cầu Trái)
+            # ========================================================
+            if run_vector:
+                already_processed = st.session_state.get("uploaded_filenames", [])
+                new_files = [f for f in upload_file if f.name not in already_processed]
+
+                if new_files:
+                    with st.status(f"Gepity đang nạp thêm {len(new_files)} tài liệu vào Vector...", expanded=True) as status:
+                        for f in new_files: f.seek(0)
+                        
+                        retriever, vector_store, num_chunks, num_docs = st.session_state.rag.process_document(
+                            new_files,
+                            chunk_size=st.session_state.get("chunk_size", 500), 
+                            chunk_overlap=st.session_state.get("chunk_overlap", 50),
+                            existing_vector_store=st.session_state.get("vector_store")
+                        )
+                        
+                        st.session_state.retriever = retriever
+                        st.session_state.vector_store = vector_store
+                        
+                        st.session_state["uploaded_filenames"] = already_processed + [f.name for f in new_files]
+                        total_files = len(st.session_state["uploaded_filenames"])
+                        st.session_state["file_stats"] = f"Đã cập nhật DB! Tổng số tài liệu hiện có: {total_files}"
+                        
+                        status.update(label=f"Hoàn tất nạp thêm Vector DB!", state="complete", expanded=False)
+                
+                # Cập nhật key và bật cờ reload cho Vector
+                st.session_state["last_vector_key"] = file_key
+                needs_rerun = True
+
+            if run_graph:
+                already_processed_graph = st.session_state.get("uploaded_filenames_graph", [])
+                new_files_graph = [f for f in upload_file if f.name not in already_processed_graph]
+
+                if new_files_graph:
+                    with st.status(f"Gepity đang rút trích Graph cho Neo4j ({len(new_files_graph)} file mới)...", expanded=True) as status:
+                        for f in new_files_graph: f.seek(0)
+                        
+                        chunks = st.session_state.graph_engine.process_document(
+                            uploaded_files=new_files_graph,
+                            chunk_size=st.session_state.get("chunk_size", 800), 
+                            chunk_overlap=st.session_state.get("chunk_overlap", 80)
+                        )
+                        chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
+                        
+                        st.session_state["uploaded_filenames_graph"] = already_processed_graph + [f.name for f in new_files_graph]
+                        
+                        st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
+                        status.update(label=f"Hoàn tất nạp Neo4j ({chunk_count} chunks)!", state="complete", expanded=False)
+                
+                # Cập nhật key và bật cờ reload cho Graph
+                st.session_state["last_graph_key"] = file_key
+                needs_rerun = True
+
+            # MỞ KHÓA GIAO DIỆN
+            st.session_state.is_processing = False
 
         # ========================================================
-        # LUỒNG 2: GRAPH RAG (Bán cầu Phải)
-        # ========================================================
-        if "Graph" in rag_arch or "Cả hai" in rag_arch:
-            if st.session_state.get("last_graph_key") != file_key:        
-                with st.status("Gepity đang rút trích Graph cho Neo4j (Sẽ mất thời gian)...", expanded=True) as status:
-                    for f in upload_file: f.seek(0)
-                    
-                    chunks = st.session_state.graph_engine.process_document(
-                        uploaded_files=upload_file,
-                        chunk_size=st.session_state.get("chunk_size", 800), 
-                        chunk_overlap=st.session_state.get("chunk_overlap", 80)
-                    )
-                    chunk_count = st.session_state.graph_engine.sync_to_graph(chunks)
-                    st.session_state["last_graph_key"] = file_key
-                    
-                    st.info(f"Đã trích xuất và kết nối các thực thể trên Neo4j. Tổng số chunk: {chunk_count}")
-                    status.update(label=f"Hoàn tất nạp Neo4j ({chunk_count} chunks)!", state="complete", expanded=False)
-                    needs_rerun = True
-
-        # ========================================================
-        # LOAD LẠI TRANG (Nếu có xử lý file mới)
+        # LOAD LẠI TRANG (Nếu thực sự có chạy ít nhất 1 luồng)
         # ==========================================
         if needs_rerun:
-            st.rerun()
-
-    else:
-        # ========================================================
-        # DỌN RÁC HIỆN TRƯỜNG KHI NGƯỜI DÙNG XÓA FILE
-        # ========================================================
-        has_vector = "last_vector_key" in st.session_state
-        has_graph = "last_graph_key" in st.session_state
-        
-        # Nếu phát hiện còn file cũ trong bộ nhớ thì mới dọn dẹp
-        if has_vector or has_graph:
-            st.session_state.retriever = None
-            st.session_state.vector_store = None
-            
-            if has_vector: del st.session_state["last_vector_key"]
-            if has_graph: del st.session_state["last_graph_key"]
-            if "file_stats" in st.session_state: del st.session_state["file_stats"]
-            if "uploaded_filenames" in st.session_state: del st.session_state["uploaded_filenames"]
-            
             st.rerun()
 
     # Hiển thị thông báo thành công dưới khung Upload
