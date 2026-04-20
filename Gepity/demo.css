@@ -398,6 +398,7 @@ div[data-testid="stPopover"] {
 }
 
 div[data-testid="stFileUploaderDeleteBtn"] {
+  display: none;
   width: 40px !important;
   height: 40px !important;
 }

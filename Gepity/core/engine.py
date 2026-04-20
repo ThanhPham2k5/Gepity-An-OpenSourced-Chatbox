@@ -1,4 +1,7 @@
 import os
+import json
+import streamlit as st
+from pathlib import Path
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import OllamaLLM
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
@@ -23,6 +26,9 @@ load_dotenv()
 # Use for WSL IP
 WINDOWS_IP = "localhost"
 MODELS_CACHE = "../../models_cache"
+
+SAVE_DIR = "gepity_database"
+META_FILE = f"{SAVE_DIR}/metadata.json"
 
 class RAG_engine:
     def __init__(self, model_name="qwen2.5:3b"):
@@ -171,7 +177,9 @@ class RAG_engine:
         relevant_docs = []
         if filter_filename and filter_filename != "Tất cả":
             for doc in raw_docs:
-                if doc.metadata.get("file_name") == filter_filename:
+                doc_full_name = doc.metadata.get("file_name", "")
+                doc_stem = Path(doc_full_name).stem if doc_full_name else ""
+                if doc_stem == filter_filename or doc_full_name == filter_filename:
                     relevant_docs.append(doc)
         else:
             relevant_docs = raw_docs
@@ -189,25 +197,37 @@ class RAG_engine:
         answer = result if isinstance(result, str) else result.get("answer", result.get("output", str(result)))
 
         return answer, relevant_docs
-    
-    def build_prompt(self, context: str, user_input: str) -> str:
-        if is_vietnamese(user_input): # if user input is in Vietnamese, response in Vietnamese
-            return f""" Sử dụng ngữ cảnh sau đây để trả lời câu hỏi.
-            Nếu bạn không biết, chỉ cần nói là bạn không biết.
-            Trả lời ngắn gọn (3-4 câu) BẮT BUỘC bằng tiếng Việt.
-            
-            Ngữ cảnh: {context}
-            
-            Câu hỏi: {user_input}
-            
-            Trả lời:"""
-        else: # default to English
-            return f"""Use the following context to answer the question.
-            If you don't know the answer, just say you don't know.
-            Keep answer concise (3-4 sentences).
-            
-            Context: {context}
-            
-            Question: {user_input}
-            
-            Answer:"""
+
+    def load_persistent_data(self):
+        if os.path.exists(SAVE_DIR):
+            # 1. Nạp danh sách file (JSON)
+            if os.path.exists(META_FILE):
+                with open(META_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    st.session_state["uploaded_filenames"] = data.get("uploaded_filenames", [])
+                    st.session_state["uploaded_filenames_graph"] = data.get("uploaded_filenames_graph", [])
+                    st.session_state["last_vector_key"] = data.get("last_vector_key", None)
+                    st.session_state["last_graph_key"] = data.get("last_graph_key", None)
+
+            # 2. Nạp Vector Store (FAISS)
+            if os.path.exists(f"{SAVE_DIR}/index.faiss"):
+                try:
+                    vector_store = FAISS.load_local(
+                        SAVE_DIR, 
+                        self.embedder,
+                        allow_dangerous_deserialization=True 
+                    )
+                    st.session_state.vector_store = vector_store
+                    
+                    # 3. Tái tạo lại cánh tay Retriever (Ensemble RAG)
+                    all_docs = list(vector_store.docstore._dict.values())
+                    bm25_retriever = BM25Retriever.from_documents(all_docs)
+                    bm25_retriever.k = 3
+                    faiss_retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+                    
+                    st.session_state.retriever = EnsembleRetriever(
+                        retrievers=[bm25_retriever, faiss_retriever], 
+                        weights=[0.5, 0.5]
+                    )
+                except Exception as e:
+                    print(f"Không thể nạp FAISS, có thể do file lỗi: {e}")

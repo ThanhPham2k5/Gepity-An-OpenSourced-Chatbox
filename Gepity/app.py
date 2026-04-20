@@ -3,46 +3,23 @@ import time
 from sqlalchemy import all_
 import streamlit as st
 import os
+import json
+import shutil
 from datetime import datetime 
 import streamlit.components.v1 as components
 from utils.helpers import img_to_base64, update_current_chat_to_history
 from core import RAG_engine, Graph_engine
 import uuid
+from pathlib import Path
+
+SAVE_DIR = "gepity_database"
+META_FILE = f"{SAVE_DIR}/metadata.json"
 
 # SETUP & SESSIONS -------------------------------------------------------
 st.set_page_config(page_title="Gepity AI", layout="wide")
-@st.dialog("⚠️ Xác nhận xóa dữ liệu")
-def confirm_action_dialog(action_type):
-    if action_type == "history":
-        st.write("Bạn có chắc chắn muốn xóa **TOÀN BỘ** lịch sử trò chuyện? Hành động này không thể hoàn tác.")
-        if st.button("Xác nhận xóa sạch lịch sử", type="primary", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.chat_history = []
-            st.session_state.current_chat_id = None
-            st.rerun()
-            
-    elif action_type == "vector":
-        st.write("Hệ thống sẽ xóa toàn bộ tài liệu đã được băm nhỏ trong bộ nhớ Vector (FAISS).")
-        if st.button("Xác nhận giải phóng bộ nhớ", type="primary", use_container_width=True):
-            st.session_state.retriever = None
-            st.session_state.vector_store = None
-            st.session_state.last_file_key = None
-            st.session_state.uploaded_filenames = []
-            st.session_state.file_uploader_key = str(uuid.uuid4())
-            
-            if "file_stats" in st.session_state:
-                del st.session_state["file_stats"]
-
-            for chat in st.session_state.chat_history:
-                chat['retriever'] = None
-                chat['vector_store'] = None
-                chat['last_file_key'] = None
-                chat['uploaded_filenames'] = []
-            
-            st.rerun()
-
 if "rag" not in st.session_state:
     st.session_state.rag = RAG_engine()
+    st.session_state.rag.load_persistent_data()
 
 if "graph_engine" not in st.session_state:
     st.session_state.graph_engine = Graph_engine()
@@ -67,6 +44,32 @@ if "file_uploader_key" not in st.session_state:
 
 if "is_processing" not in st.session_state:
     st.session_state.is_processing = False
+
+@st.dialog("⚠️ Xác nhận xóa dữ liệu")
+def confirm_action_dialog(action_type):
+    if action_type == "history":
+        st.write("Bạn có chắc chắn muốn xóa **TOÀN BỘ** lịch sử trò chuyện? Hành động này không thể hoàn tác.")
+        if st.button("Xác nhận xóa sạch lịch sử", type="primary", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.chat_history = []
+            st.session_state.current_chat_id = None
+            st.rerun()
+            
+    elif action_type == "all":
+        st.write("Hệ thống sẽ xóa toàn bộ tài liệu trong cả Vector DB (FAISS) và Graph DB (Neo4j).")
+        if st.button("Xác nhận giải phóng bộ nhớ", type="primary", use_container_width=True):
+            st.session_state.graph_engine.empty_database()
+            st.session_state.retriever = None
+            st.session_state.vector_store = None
+            for key in ["last_vector_key", "last_graph_key", "uploaded_filenames", "uploaded_filenames_graph", "file_stats"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            
+            st.session_state.file_uploader_key = str(uuid.uuid4())
+            
+            if os.path.exists(SAVE_DIR):
+                shutil.rmtree(SAVE_DIR)
+            st.rerun()
 
 # LOAD CSS -------------------------------------------------------
 # Get the directory where app.py actually lives
@@ -188,7 +191,7 @@ with st.sidebar:
             confirm_action_dialog("history")
     with col_del_2:
         if st.button("📂 Xóa Docs", use_container_width=True):
-            confirm_action_dialog("vector")
+            confirm_action_dialog("all")
 
     # Section: Hướng dẫn
     st.markdown('<div class="sidebar-label">Hướng dẫn sử dụng</div>', unsafe_allow_html=True)
@@ -368,29 +371,22 @@ with st.popover("Đính kèm file", use_container_width=False):
         key=st.session_state.file_uploader_key
     )
 
-    # Đảm bảo string mặc định khớp với các trường hợp bên dưới
+
     rag_arch = st.session_state.get("rag_architecture", "NormalRAG")
-    
-    # Cờ báo hiệu xem có cần reload lại trang không
     needs_rerun = False 
 
     if upload_file:
-        # Tạo chìa khóa duy nhất cho toàn bộ cục file hiện tại
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
         
         run_vector = ("Normal" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_vector_key") != file_key
         run_graph = ("Graph" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_graph_key") != file_key
 
-        # Nếu có ít nhất 1 luồng cần chạy, ta mới khóa UI và xử lý
         if run_vector or run_graph:
             st.session_state.is_processing = True
 
-            # ========================================================
-            # LUỒNG 1: VECTOR RAG (Bán cầu Trái)
-            # ========================================================
             if run_vector:
                 already_processed = st.session_state.get("uploaded_filenames", [])
-                new_files = [f for f in upload_file if f.name not in already_processed]
+                new_files = [f for f in upload_file if Path(f.name).stem not in already_processed]
 
                 if new_files:
                     with st.status(f"Gepity đang nạp thêm {len(new_files)} tài liệu vào Vector...", expanded=True) as status:
@@ -406,7 +402,7 @@ with st.popover("Đính kèm file", use_container_width=False):
                         st.session_state.retriever = retriever
                         st.session_state.vector_store = vector_store
                         
-                        st.session_state["uploaded_filenames"] = already_processed + [f.name for f in new_files]
+                        st.session_state["uploaded_filenames"] = already_processed + [Path(f.name).stem for f in new_files]
                         total_files = len(st.session_state["uploaded_filenames"])
                         st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Tổng số chunk: {num_chunks}, Thời gian: {end_time - start_time:.2f} giây"
                         
@@ -418,7 +414,7 @@ with st.popover("Đính kèm file", use_container_width=False):
 
             if run_graph:
                 already_processed_graph = st.session_state.get("uploaded_filenames_graph", [])
-                new_files_graph = [f for f in upload_file if f.name not in already_processed_graph]
+                new_files_graph = [f for f in upload_file if Path(f.name).stem not in already_processed_graph]
 
                 if new_files_graph:
                     with st.status(f"Gepity đang rút trích Graph cho Neo4j ({len(new_files_graph)} file mới)...", expanded=True) as status:
@@ -441,7 +437,7 @@ with st.popover("Đính kèm file", use_container_width=False):
                         st.session_state.graph_engine.create_fulltext_index()
                         end_time = time.time()
 
-                        st.session_state["uploaded_filenames_graph"] = already_processed_graph + [f.name for f in new_files_graph]
+                        st.session_state["uploaded_filenames_graph"] = already_processed_graph + [Path(f.name).stem for f in new_files_graph]
                         st.session_state["file_stats"] = f"Đã trích xuất và kết nối các thực thể trên Neo4j! Tổng số chunk: {total_processed_chunks}, Thời gian: {end_time - start_time:.2f} giây"
                         status.update(label=f"Hoàn tất nạp Neo4j ({total_processed_chunks} chunks)!", state="complete", expanded=False)
                 
@@ -449,16 +445,24 @@ with st.popover("Đính kèm file", use_container_width=False):
                 st.session_state["last_graph_key"] = file_key
                 needs_rerun = True
 
-            # MỞ KHÓA GIAO DIỆN
+            # Lưu file
+            os.makedirs(SAVE_DIR, exist_ok=True)
+            if run_vector and st.session_state.get("vector_store"):
+                st.session_state.vector_store.save_local(SAVE_DIR)
+            meta_data = {
+                "uploaded_filenames": st.session_state.get("uploaded_filenames", []),
+                "uploaded_filenames_graph": st.session_state.get("uploaded_filenames_graph", []),
+                "last_vector_key": st.session_state.get("last_vector_key", None),
+                "last_graph_key": st.session_state.get("last_graph_key", None)
+            }
+            with open(META_FILE, "w", encoding="utf-8") as f:
+                json.dump(meta_data, f, ensure_ascii=False, indent=4)
+
             st.session_state.is_processing = False
 
-        # ========================================================
-        # LOAD LẠI TRANG (Nếu thực sự có chạy ít nhất 1 luồng)
-        # ==========================================
         if needs_rerun:
             st.rerun()
 
-    # Hiển thị thông báo thành công dưới khung Upload
     if "file_stats" in st.session_state:
         st.success(st.session_state["file_stats"])
 
@@ -473,9 +477,9 @@ if user_req:
         core_method = st.session_state.get("core_search_method", "Hybrid search")
         rag_arch = st.session_state.get("rag_architecture", "NormalRAG")
 
-        vector_search_kwargs = {"k": 3} 
-        if filter_choice and filter_choice != "Tất cả":
-            vector_search_kwargs["filter"] = {"file_name": filter_choice}
+        vector_search_kwargs = {"k": 3}
+        if filter_choice:
+            file_filter_graph = filter_choice if filter_choice != "Tất cả" else None
 
         pure_vector_retriever = None
         if st.session_state.vector_store:
@@ -492,13 +496,15 @@ if user_req:
                 st.session_state.retriever.search_kwargs = vector_search_kwargs
 
         active_retriever = st.session_state.retriever if core_method == "Hybrid search" else pure_vector_retriever
+        isHybrid = True if core_method == "Hybrid search" else False
+
         normal_rag_name = f"NormalRAG ({core_method})"
 
         if "Cả hai" in rag_arch:
             res_normal, sources_normal = st.session_state.rag.get_response(
                 user_req, retriever=active_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
-            res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req)
+            res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req, file_filter_graph, isHybrid)
             
             st.session_state.messages.append({
                 "role": "ai", "is_compare": True, 
@@ -510,7 +516,7 @@ if user_req:
             })
 
         elif "Graph" in rag_arch:
-            res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req)
+            res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req, file_filter_graph, isHybrid)
             st.session_state.messages.append({
                 "role": "ai", "is_compare": False, 
                 "content": res_graph, "sources": sources_graph, 
