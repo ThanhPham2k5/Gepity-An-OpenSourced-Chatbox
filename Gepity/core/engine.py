@@ -123,7 +123,7 @@ class RAG_engine:
 
         if "CHITCHAT" in intent:
             prompt_chitchat = ChatPromptTemplate.from_messages([
-                ("system", "Bạn là một trợ lý AI thân thiện. Hãy trả lời câu giao tiếp của người dùng một cách tự nhiên."),
+                ("system", "Bạn là một trợ lý AI thân thiện. Hãy trả lời câu giao tiếp của người dùng một cách tự nhiên bằng Tiếng Việt."),
                 ("human", "{input}"),
             ])
             chain_chitchat = prompt_chitchat | self.llm

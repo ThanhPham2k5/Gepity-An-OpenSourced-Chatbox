@@ -129,8 +129,6 @@ with st.sidebar:
     # Section: Cài đặt Chunk 
     st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
     with st.expander("Tùy chỉnh Chunk Parameters", expanded=False):
-        st.markdown("<span style='font-size: 0.85em; color: gray;'>Thiết lập trước khi upload tài liệu</span>", unsafe_allow_html=True)
-        
         chunk_size = st.slider(
             "Chunk Size (Kích thước đoạn)", 
             min_value=100, max_value=2000, value=800, step=100,
@@ -157,7 +155,7 @@ with st.sidebar:
 
     # Lịch sử trò chuyện
     st.markdown('<div class="sections-title">LỊCH SỬ TRÒ CHUYỆN</div>', unsafe_allow_html=True)
-    with st.container(border=False):
+    with st.container(height=150):
         for chat in st.session_state.chat_history:
             if st.button(chat['title'], key=f"hist_{chat['id']}", use_container_width=True, type="secondary"):
                 update_current_chat_to_history()
@@ -182,7 +180,6 @@ with st.sidebar:
         st.info("Chưa có file nào.")
     
     # Dọn dẹp dữ liệu
-    st.divider()
     st.markdown('<div class="sidebar-label">Quản trị dữ liệu</div>', unsafe_allow_html=True)
     
     col_del_1, col_del_2 = st.columns(2)
@@ -256,9 +253,6 @@ with chat_container:
         is_user = msg["role"] == 'user'
         time_str = msg.get('time', '')
 
-        # -----------------------------------------------------
-        # 1. NẾU LÀ NGƯỜI DÙNG: Luôn vẽ 1 cột bên phải
-        # -----------------------------------------------------
         if is_user:
             st.markdown(f"""
                 <div class="bubble-header-user_bubble">
@@ -271,21 +265,19 @@ with chat_container:
                 </div>
             """, unsafe_allow_html=True)
 
-        # -----------------------------------------------------
-        # 2. NẾU LÀ AI: Quyết định vẽ 1 hay 2 cột dựa vào cờ is_compare
-        # -----------------------------------------------------
         else:
             if msg.get("is_compare"):
-                # === TRƯỜNG HỢP CHIA ĐÔI MÀN HÌNH ===
                 col1, col2 = st.columns(2)
-                
-                with col1: # CỘT TRÁI (HYBRID RAG - Luôn là Document Object)
+                time_left = f"{time_str} &nbsp;•&nbsp; Thời gian trả lời: {msg['left_duration']:.2f}s" if "left_duration" in msg else time_str
+                time_right = f"{time_str} &nbsp;•&nbsp; Thời gian trả lời: {msg['right_duration']:.2f}s" if "right_duration" in msg else time_str
+
+                with col1:
                     st.markdown(f"""
                         <div class="bubble-header-ai_bubble">
                             <div class="bubble-answer-ai_bubble">
                                 <span class="bubble-name">{msg['left_title']}</span>
                                 <div class="ai_bubble">{msg["left_content"]}</div>
-                                <span class="bubble-time">{time_str}</span>
+                                <span class="bubble-time">{time_left}</span>
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
@@ -298,13 +290,13 @@ with chat_container:
                                 st.markdown(f"**{f_name} (Trang {p})**")
                                 st.markdown(f"> {doc.page_content}")
                                 
-                with col2: # CỘT PHẢI (GRAPH RAG - Luôn là Dictionary)
+                with col2:
                     st.markdown(f"""
                         <div class="bubble-header-ai_bubble">
                             <div class="bubble-answer-ai_bubble">
                                 <span class="bubble-name">{msg['right_title']}</span>
                                 <div class="ai_bubble">{msg["right_content"]}</div>
-                                <span class="bubble-time">{time_str}</span>
+                                <span class="bubble-time">{time_right}</span>
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
@@ -316,20 +308,19 @@ with chat_container:
                                 f_name = doc.get('file_name', 'Tài liệu')
                                 score = doc.get('score', 0)
                                 content = doc.get('text', '')
-                                
                                 st.markdown(f"**{f_name} (Trang {p} - Độ tin cậy: {score:.2f})**")
                                 st.markdown(f"> {content}")
 
             else:
-                # === TRƯỜNG HỢP 1 CỘT (CHẾ ĐỘ ĐƠN LẺ) ===
                 mode_label = f" - {msg.get('mode_name', '')}" if msg.get('mode_name') else ""
+                time_single = f"{time_str} &nbsp;•&nbsp; Thời gian trả lời: {msg['duration']:.2f}s" if "duration" in msg else time_str
                 st.markdown(f"""
                     <div class="bubble-header-ai_bubble">
                         <img src="data:image/png;base64,{ai_bubble}" class="ai_bubble-ico"/>
                         <div class="bubble-answer-ai_bubble">
                             <span class="bubble-name">Gepity{mode_label}</span>
                             <div class="ai_bubble">{msg["content"]}</div>
-                            <span class="bubble-time">{time_str}</span>
+                            <span class="bubble-time">{time_single}</span>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
@@ -338,7 +329,6 @@ with chat_container:
                     st.markdown('<div class="source-divider"></div>', unsafe_allow_html=True)
                     with st.expander("Nguồn trích dẫn"):
                         for i, doc in enumerate(msg["sources"]):
-                            # --- PHÉP THUẬT NẰM Ở ĐÂY: Tự động phân loại dữ liệu ---
                             if isinstance(doc, dict):
                                 # Nếu là GraphRAG (Dictionary)
                                 p = doc.get('page_number', 'N/A')
@@ -371,19 +361,35 @@ with st.popover("Đính kèm file", use_container_width=False):
         key=st.session_state.file_uploader_key
     )
 
-
     rag_arch = st.session_state.get("rag_architecture", "NormalRAG")
     needs_rerun = False 
 
     if upload_file:
+        all_existing = set(st.session_state.get("uploaded_filenames", [])) | set(st.session_state.get("uploaded_filenames_graph", []))
+        
+        valid_files = [f for f in upload_file if Path(f.name).stem not in all_existing]
+        duplicate_names = [f.name for f in upload_file if Path(f.name).stem in all_existing]
+        
+        if duplicate_names:
+            st.warning(f"⚠️ Bỏ qua {len(duplicate_names)} file đã tồn tại.")
+            if not valid_files:
+                if st.button("Làm sạch danh sách chờ"):
+                    st.session_state.file_uploader_key = str(uuid.uuid4())
+                    st.rerun()
+
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
         
-        run_vector = ("Normal" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_vector_key") != file_key
-        run_graph = ("Graph" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_graph_key") != file_key
+        run_vector = ("Normal" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_vector_key") != file_key and (len(valid_files) > 0)
+        run_graph = ("Graph" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_graph_key") != file_key and (len(valid_files) > 0)
 
-        if run_vector or run_graph:
+        if (run_vector or run_graph) and not st.session_state.is_processing:
+            if "file_stats" in st.session_state:
+                del st.session_state["file_stats"]
             st.session_state.is_processing = True
+            st.rerun()
 
+        if st.session_state.is_processing:
+            stats_list = []
             if run_vector:
                 already_processed = st.session_state.get("uploaded_filenames", [])
                 new_files = [f for f in upload_file if Path(f.name).stem not in already_processed]
@@ -403,12 +409,9 @@ with st.popover("Đính kèm file", use_container_width=False):
                         st.session_state.vector_store = vector_store
                         
                         st.session_state["uploaded_filenames"] = already_processed + [Path(f.name).stem for f in new_files]
-                        total_files = len(st.session_state["uploaded_filenames"])
-                        st.session_state["file_stats"] = f"Xử lý tài liệu thành công! Tổng số chunk: {num_chunks}, Thời gian: {end_time - start_time:.2f} giây"
-                        
-                        status.update(label=f"Hoàn tất nạp thêm Vector DB!", state="complete", expanded=False)
+                        stats_list.append(f"NormalRAG: {num_chunks} chunks ({end_time - start_time:.2f}s)")
+                        status.update(label="Hoàn tất nạp Vector!", state="complete", expanded=False)
                 
-                # Cập nhật key và bật cờ reload cho Vector
                 st.session_state["last_vector_key"] = file_key
                 needs_rerun = True
 
@@ -438,10 +441,9 @@ with st.popover("Đính kèm file", use_container_width=False):
                         end_time = time.time()
 
                         st.session_state["uploaded_filenames_graph"] = already_processed_graph + [Path(f.name).stem for f in new_files_graph]
-                        st.session_state["file_stats"] = f"Đã trích xuất và kết nối các thực thể trên Neo4j! Tổng số chunk: {total_processed_chunks}, Thời gian: {end_time - start_time:.2f} giây"
-                        status.update(label=f"Hoàn tất nạp Neo4j ({total_processed_chunks} chunks)!", state="complete", expanded=False)
+                        stats_list.append(f"GraphRAG: {total_processed_chunks} chunks ({end_time - start_time:.2f}s)")
+                        status.update(label=f"Hoàn tất nạp Neo4j!", state="complete", expanded=False)
                 
-                # Cập nhật key và bật cờ reload cho Graph
                 st.session_state["last_graph_key"] = file_key
                 needs_rerun = True
 
@@ -459,6 +461,9 @@ with st.popover("Đính kèm file", use_container_width=False):
                 json.dump(meta_data, f, ensure_ascii=False, indent=4)
 
             st.session_state.is_processing = False
+            if stats_list:
+                st.session_state["file_stats"] = " | ".join(stats_list)
+            st.session_state.file_uploader_key = str(uuid.uuid4())
 
         if needs_rerun:
             st.rerun()
@@ -500,37 +505,53 @@ if user_req:
 
         normal_rag_name = f"NormalRAG ({core_method})"
 
+        start_response_time = time.time()
         if "Cả hai" in rag_arch:
+            start_normal = time.time()
             res_normal, sources_normal = st.session_state.rag.get_response(
                 user_req, retriever=active_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
+            duration_normal = time.time() - start_normal
+
+            start_graph = time.time()
             res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req, file_filter_graph, isHybrid)
-            
+            duration_graph = time.time() - start_graph
+
             st.session_state.messages.append({
                 "role": "ai", "is_compare": True, 
                 "left_title": normal_rag_name,
-                "left_content": res_normal, "left_sources": sources_normal,
+                "left_content": res_normal, "left_sources": sources_normal, "left_duration": duration_normal,
                 "right_title": "GraphRAG",
-                "right_content": res_graph, "right_sources": sources_graph,
-                "time": ai_time
+                "right_content": res_graph, "right_sources": sources_graph, "right_duration": duration_graph,
+                "time": ai_time,
             })
 
         elif "Graph" in rag_arch:
             res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req, file_filter_graph, isHybrid)
+            duration = time.time() - start_response_time
             st.session_state.messages.append({
-                "role": "ai", "is_compare": False, 
-                "content": res_graph, "sources": sources_graph, 
-                "time": ai_time, "mode_name": "GraphRAG"
+                "role": "ai", 
+                "is_compare": False, 
+                "content": res_graph, 
+                "sources": sources_graph, 
+                "time": ai_time, 
+                "mode_name": "GraphRAG",
+                "duration": duration
             })
 
         else:
             res_normal, sources_normal = st.session_state.rag.get_response(
                 user_req, retriever=active_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
+            duration = time.time() - start_response_time
             st.session_state.messages.append({
-                "role": "ai", "is_compare": False, 
-                "content": res_normal, "sources": sources_normal, 
-                "time": ai_time, "mode_name": normal_rag_name
+                "role": "ai", 
+                "is_compare": False, 
+                "content": res_normal, 
+                "sources": sources_normal, 
+                "time": ai_time, 
+                "mode_name": normal_rag_name,
+                "duration": duration
             })
 
         st.rerun()

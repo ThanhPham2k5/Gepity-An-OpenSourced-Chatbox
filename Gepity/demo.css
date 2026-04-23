@@ -382,6 +382,15 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   width: 100% !important;
 }
 
+div[data-testid="stVerticalBlockBorderWrapper"]
+  > div
+  > div
+  > div:nth-of-type(3)
+  > div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 section[data-testid="stSidebar"]
   div[data-testid="stCheckbox"]
   label[data-baseweb="checkbox"]
