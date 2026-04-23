@@ -22,3 +22,6 @@ Gepity/faiss_index/
 # Hugging Face models cache
 models_cache/
 Gepity/models_cache/
+
+#database
+Gepity/gepity_database

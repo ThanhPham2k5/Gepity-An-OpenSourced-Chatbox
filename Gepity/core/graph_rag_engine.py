@@ -8,6 +8,7 @@ from langchain_ollama import ChatOllama
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks, extract_and_link_entities
 from .builder import build_local_response_prompt, build_global_reduce_prompt, build_router_prompt, build_leaf_prompt, build_parent_prompt, build_global_context_from_result, build_local_context_from_result
 from utils import is_vietnamese, setup_constraints, extract_json_from_response
+from pathlib import Path
 
 from langchain_core.prompts.chat import ChatPromptTemplate
 from database import get_graph_connection
@@ -93,11 +94,12 @@ class Graph_engine:
 
         for doc in all_docs:
             source_name = doc.metadata.get('source', 'unknown_doc')
+            source_without_suffix = Path(source_name).stem
             chunks = split_docs_into_chunks([doc], chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-            if source_name not in docs_with_chunks:
-                docs_with_chunks[source_name] = []
+            if source_without_suffix not in docs_with_chunks:
+                docs_with_chunks[source_without_suffix] = []
         
-            docs_with_chunks[source_name].extend(chunks)
+            docs_with_chunks[source_without_suffix].extend(chunks)
 
         return docs_with_chunks
 
@@ -500,9 +502,9 @@ class Graph_engine:
         if not self.graph:
             st.error("Không thể kết nối đến Neo4j")
             if is_vietnamese(user_input):
-                return f"""Xin lỗi, tôi không thể truy cập vào đồ thị kiến thức vào lúc này. Vui lòng thử lại sau."""
+                return "Xin lỗi, tôi không thể truy cập vào đồ thị kiến thức vào lúc này. Vui lòng thử lại sau.", []
             else:
-                return f"""Sorry, I cannot access the knowledge graph at the moment. Please try again later."""
+                return "Sorry, I cannot access the knowledge graph at the moment. Please try again later.", []
         
         # get router response
         router_response = self.router_chain.invoke(user_input)
@@ -522,9 +524,9 @@ class Graph_engine:
 
             if not global_context:
                 if is_vietnamese(user_input):
-                    return f"""Xin lỗi, tôi không thể tìm thấy ngữ cảnh liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp."""
+                    return "Xin lỗi, tôi không thể tìm thấy ngữ cảnh liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp.", []
                 else:
-                    return f"""Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided."""
+                    return "Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided.", []
 
             # build prompt with graph context and user input
             print(f"DEBUG: Context length: {len(global_context)} characters")
@@ -542,9 +544,9 @@ class Graph_engine:
 
             if not graph_context:
                 if is_vietnamese(user_input):
-                    return f"""Xin lỗi, tôi không thể tìm thấy ngữ cảnh liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp."""
+                    return "Xin lỗi, tôi không thể tìm thấy ngữ cảnh liên quan đến câu hỏi của bạn trong đồ thị kiến thức. Vui lòng thử lại với câu hỏi khác hoặc kiểm tra lại thông tin đã được cung cấp.", []
                 else:
-                    return f"""Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided."""
+                    return "Sorry, I couldn't find relevant context for your question in the knowledge graph. Please try again with a different question or check the information provided." , []
             
             # build prompt with graph context and user input
             print(f"DEBUG: Context length: {len(graph_context)} characters")
@@ -750,7 +752,8 @@ class Graph_engine:
 
     def create_fulltext_index(self):
         cypher_query = """
-        CREATE FULLTEXT INDEX chunk_text_index FOR (c:Chunk) ON EACH [c.text]
+        CREATE FULLTEXT INDEX chunk_text_index IF NOT EXISTS
+        FOR (c:Chunk) ON EACH [c.text]
         """
 
         try:
