@@ -174,25 +174,3 @@ class RAG_engine:
         answer = result if isinstance(result, str) else result.get("output", str(result))
 
         return answer, relevant_docs
-    
-    def build_prompt(self, context: str, user_input: str) -> str:
-        if is_vietnamese(user_input): # if user input is in Vietnamese, response in Vietnamese
-            return f""" Sử dụng ngữ cảnh sau đây để trả lời câu hỏi.
-            Nếu bạn không biết, chỉ cần nói là bạn không biết.
-            Trả lời ngắn gọn (3-4 câu) BẮT BUỘC bằng tiếng Việt.
-            
-            Ngữ cảnh: {context}
-            
-            Câu hỏi: {user_input}
-            
-            Trả lời:"""
-        else: # default to English
-            return f"""Use the following context to answer the question.
-            If you don't know the answer, just say you don't know.
-            Keep answer concise (3-4 sentences).
-            
-            Context: {context}
-            
-            Question: {user_input}
-            
-            Answer:"""
