@@ -4,32 +4,24 @@ from utils import is_vietnamese
 
 def build_router_prompt() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages([
-        ("system", """Bạn là chuyên gia điều hướng cấp cao của hệ thống GraphRAG. 
-        Nhiệm vụ: Phân tích ý định từ câu hỏi người dùng và chọn phương pháp truy vấn tối ưu.
+        ("system", """Bạn là bộ não điều hướng của hệ thống GraphRAG. Nhiệm vụ của bạn là phân biệt cực kỳ chính xác giữa truy vấn "chi tiết" (local) và "tổng quát" (global).
 
-        ### CÁC QUY TẮC ĐIỀU HƯỚNG:
+        Các quy tắc phân loại:
 
-        1. **local** (Ưu tiên mặc định):
-           - Truy vấn về thực thể cụ thể (người, vật, khái niệm).
-           - Câu hỏi "Như thế nào", "Tại sao", "Là gì" về một bộ phận của tài liệu.
-           - Yêu cầu liệt kê các tính năng, vai trò, hoặc thông số kỹ thuật.
-           - Ghi nhớ: Ngay cả khi câu hỏi hỏi về "danh sách" (list) các thực thể hay chức năng trong một hệ thống, đó vẫn là LOCAL.
-           - *Ví dụ:* "Quyền admin gồm những gì?", "Cách cấu hình module A?", "Hệ thống A gồm có những chức năng gì?".
+        1. "local": 
+        - Hỏi về thông tin chi tiết, định nghĩa, danh sách các thành phần, hoặc cách thức hoạt động của một tính năng cụ thể.
+        - Ví dụ: "Các vai trò người dùng là gì?", "Cách đăng ký tài khoản?", "Quyền của giảng viên là gì?", "Dự án A có chức năng gì?". 
+        - Ghi nhớ: Ngay cả khi câu hỏi hỏi về "danh sách" (list) các thực thể trong một hệ thống, đó vẫn là LOCAL.
 
-        2. **global** (Chỉ khi cần tổng hợp diện rộng):
-           - Truy vấn yêu cầu sự hiểu biết về TOÀN BỘ nội dung tài liệu.
-           - Phân tích các chủ đề (themes) xuất hiện rải rác ở nhiều nơi.
-           - Câu hỏi về xu hướng, rủi ro tổng thể hoặc tóm tắt mức cao nhất.
-           - *Ví dụ:* "Thông tin cốt lõi của toàn bộ tài liệu là gì?", "Tài liệu đang nói về chủ đề gì?", "Nội dung chính của toàn bộ tài liệu?"
+        2. "global":
+        - Chỉ dành cho các câu hỏi yêu cầu tóm tắt toàn bộ văn bản, tìm chủ đề chính (themes), hoặc phân tích xu hướng xuyên suốt tài liệu.
+        - Ví dụ: "Tài liệu này nói về cái gì?", "Tóm tắt các điểm chính của toàn bộ dự án", "Có những rủi ro nào được nhắc đến rải rác trong file này?", "Xu hướng phát triển của hệ thống là gì?".
 
-        3. **general**:
-           - Chào hỏi, cảm ơn, hoặc các câu hỏi fact không liên quan đến dữ liệu trong tài liệu.
-           - *Ví dụ:* "Chào bạn", "Cảm ơn", "Ai là người giàu nhất thế giới?".
+        3. "general": Các câu chào hỏi hoặc không liên quan tài liệu.
 
-        ### YÊU CẦU ĐẦU RA:
         CHỈ trả về JSON: {{"type": "local" | "global" | "general", "reason": "lý do"}}.
         """),
-        ("human", "{user_input}")
+        ("human", "Câu hỏi: {user_input}")
     ])
 
 def build_leaf_prompt() -> ChatPromptTemplate:
