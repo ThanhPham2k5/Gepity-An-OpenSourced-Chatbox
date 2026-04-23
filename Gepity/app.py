@@ -342,7 +342,7 @@ with chat_container:
                             if isinstance(doc, dict):
                                 # Nếu là GraphRAG (Dictionary)
                                 p = doc.get('page_number', 'N/A')
-                                f_name = doc.get('file_name', 'Tài liệu')
+                                f_name = doc.get('source_file', 'Tài liệu')
                                 content = doc.get('text', '')
                                 score_text = f" - Score: {doc.get('score', 0):.2f}"
                             else:
@@ -425,6 +425,7 @@ with st.popover("Đính kèm file", use_container_width=False):
                             chunk_size=st.session_state.get("chunk_size", 800), 
                             chunk_overlap=st.session_state.get("chunk_overlap", 80)
                         )
+                        
                         total_processed_chunks = 0
                         for filename, chunks in docs_with_chunks.items():
                             st.write(f"Đang xử lý tài liệu: {filename}")
