@@ -21,10 +21,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use for Windows IP
-WINDOWS_IP = "172.25.64.1"
+#WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-# WINDOWS_IP = "localhost"
+WINDOWS_IP = "localhost"
 MODELS_CACHE = "../../models_cache"
 
 SAVE_DIR = "gepity_database"

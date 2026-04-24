@@ -334,7 +334,7 @@ class Graph_engine:
     def global_search(self, source=None, level=None):
 
         level_source_filter = "WHERE c.source=$source" if source else ""
-        if level is None: # if level was not specified, get the second highest level
+        if not level: # if level was not specified, get the second highest level
             level_query = f"""
             MATCH (c:Community)
             {level_source_filter}
@@ -344,15 +344,7 @@ class Graph_engine:
             RETURN c.level as level
             """
             level_data = self.graph.query(level_query,{"source": source} if source else {})
-            # origin code (bugs chance)
             level = level_data[0]['level']
-
-            # fix code
-            # if level_data and len(level_data) > 0:
-            #     level = level_data[0]['level']
-            # else:
-            #     print("Cảnh báo: Không tìm thấy Community level nào trong Database!")
-            #     return []
 
         retrieval_source_filter = "AND comm.source = $source" if source else ""
         retrieval_query = f"""
