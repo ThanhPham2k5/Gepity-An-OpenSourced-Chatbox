@@ -20,10 +20,10 @@ def _is_running_in_streamlit():
     return get_script_run_ctx() is not None
 
 # Use for Windows IP
-# WINDOWS_IP = "172.25.64.1"
+WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-WINDOWS_IP = "localhost"
+# WINDOWS_IP = "localhost"
 MODELS_CACHE = "../../models_cache"
 
 class Graph_engine:

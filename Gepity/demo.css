@@ -387,9 +387,9 @@ div[data-testid="stVerticalBlockBorderWrapper"]
   > div
   > div:nth-of-type(3)
   > div {
-  display: flex;
+  /* display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: center; */
 }
 section[data-testid="stSidebar"]
   div[data-testid="stCheckbox"]
