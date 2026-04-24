@@ -57,23 +57,20 @@ def build_parent_prompt() -> ChatPromptTemplate:
         ])
 
 def build_local_response_prompt(user_input, context):
-    """
-    Xây dựng prompt tối ưu cho kiến trúc GraphRAG.
-    Hướng dẫn LLM cách đọc hiểu 3 tầng thông tin (Community, Entity, Chunk).
-    """
     if is_vietnamese(user_input):
         return f"""Bạn là một trợ lý AI thông minh. Nhiệm vụ của bạn là trả lời câu hỏi dựa trên ngữ cảnh được trích xuất từ Đồ thị Tri thức (Knowledge Graph).
         
         Ngữ cảnh được cung cấp bao gồm 3 phần từ khái quát đến chi tiết:
         1. CÁC CHỦ ĐỀ LIÊN QUAN: Tóm tắt bức tranh toàn cảnh về các chủ đề/cộng đồng liên quan.
         2. THỰC THỂ CHÍNH: Các đối tượng, khái niệm quan trọng có trong câu hỏi.
-        3. CHI TIẾT VĂN BẢN: Các trích đoạn nguyên bản từ tài liệu gốc.
+        3. CHI TIẾT VĂN BẢN: Các trích đoạn nguyên bản từ tài liệu gốc, kèm theo tên file tài liệu mà đoạn văn thuộc về.
 
         QUY TẮC BẮT BUỘC:
         - ƯU TIÊN TỐI ĐA việc sử dụng thông tin trong ngữ cảnh được cung cấp.
         - Hãy kết hợp thông tin bao quát từ "Chủ đề liên quan" và số liệu cụ thể từ "Chi tiết văn bản" để tạo ra một câu trả lời toàn diện, logic.
-        - Nếu bạn lấy thông tin trực tiếp từ phần "Chi tiết văn bản", bạn BẮT BUỘC phải trích dẫn Nguồn (Ví dụ: Theo [Nguồn 1]...).
-        - NẾU NGỮ CẢNH KHÔNG CÓ CÂU TRẢ LỜI: Hãy nói "Câu hỏi cung cấp quá ít thông tin để có câu trả lời tốt.".
+        - Nếu bạn lấy thông tin trực tiếp từ phần "Chi tiết văn bản", bạn BẮT BUỘC phải trích dẫn Nguồn, kèm tên file tài liệu (Ví dụ: Theo [Nguồn 1] của tài liệu...).
+        - Câu hỏi có thể có tên của tài liệu trong đó (Ví dụ (Giả sử tên file của tài liệu là "A"): "Theo thông tin của tài liệu A...", "Dựa vào file A...", hay "Dùng thông tin cung cấp từ tài liệu A..."), hãy sử dụng thông tin này kèm theo nguồn gốc tài liệu được cung cấp trong ngữ cảnh để trả lời câu hỏi.
+        - NẾU NGỮ CẢNH KHÔNG CÓ CÂU TRẢ LỜI: Hãy nói "Câu hỏi cung cấp quá ít thông tin để có câu trả lời tốt.", rồi sau đó dùng kiến thức có sẵn của bạn để trả lời.
 
         Ngữ cảnh:
         {context}
@@ -87,13 +84,14 @@ def build_local_response_prompt(user_input, context):
         The provided context consists of 3 levels of information, from macro to micro:
         1. CÁC CHỦ ĐỀ LIÊN QUAN (Community Insights): Macro-level summaries of relevant topics and communities.
         2. THỰC THỂ CHÍNH (Key Entities): Important entities and concepts.
-        3. CHI TIẾT VĂN BẢN (Text Chunks): Raw excerpts from the source documents.
+        3. CHI TIẾT VĂN BẢN (Text Chunks): Raw excerpts from the source documents, with the document's file name.
 
         STRICT RULES:
         - PRIORITIZE the provided context above all else.
         - Synthesize the broad understanding from the "Community Insights" with the specific details from the "Text Chunks" to provide a comprehensive answer.
-        - If you use specific information from the "Text Chunks", you MUST cite your sources (e.g., According to [Nguồn 1]...).
-        - IF THE CONTEXT DOES NOT CONTAIN THE ANSWER: You must state "The question provided too little information to form a good answer.".
+        - If you use specific information from the "Text Chunks", you MUST cite your sources, and the document's file name the source came from (e.g., According to [Nguồn 1] from document...).
+        - The Question could come with the document's file name (e.g. (Assume the document's name in these examples is "A"), "According to the information from file A...", "Based on document A...", or "Use the informations provided by document A..." ), use this information with the document's file name from the context to answer the question.
+        - IF THE CONTEXT DOES NOT CONTAIN THE ANSWER: You must state "The question provided too little information to form a good answer.", then use your available knowledge to answer.
 
         Context:
         {context}
@@ -102,21 +100,18 @@ def build_local_response_prompt(user_input, context):
 
         Answer IN ENGLISH (Clear, concise, and well-structured):"""
 
-def build_global_reduce_prompt(user_input, context):
-    """
-    Xây dựng prompt cho giai đoạn REDUCE của Global Search.
-    Hướng dẫn LLM tổng hợp các báo cáo trung gian thành một câu trả lời toàn cục, hoàn chỉnh.
-    """
+def build_global_prompt(user_input, context):
     if is_vietnamese(user_input):
         return f"""Bạn là một trợ lý AI thông minh. Nhiệm vụ của bạn là tổng hợp các báo cáo trung gian để tạo ra câu trả lời toàn diện nhất cho câu hỏi của người dùng.
         
-        Ngữ cảnh được cung cấp bên dưới là TỔNG HỢP CÁC PHÂN TÍCH TOÀN CỤC (Intermediate Answers) được trích xuất từ nhiều cộng đồng dữ liệu khác nhau. Nó mang tính chất bao quát và đa chiều.
+        Ngữ cảnh được cung cấp bên dưới là TỔNG HỢP CÁC PHÂN TÍCH TOÀN CỤC (Intermediate Answers) được trích xuất từ nhiều cộng đồng dữ liệu khác nhau, kèm theo tên file tài liệu mà báo cáo đó thuộc về. Nó mang tính chất bao quát và đa chiều.
 
         QUY TẮC BẮT BUỘC:
         - ƯU TIÊN TỐI ĐA việc sử dụng thông tin trong ngữ cảnh được cung cấp. Không bịa đặt thêm dữ liệu.
         - Hãy xâu chuỗi các điểm dữ liệu rời rạc từ các báo cáo khác nhau để tạo thành một bức tranh toàn cảnh, mạch lạc và có tính logic cao.
+        - Câu hỏi có thể có tên của tài liệu trong đó (Ví dụ (Giả sử tên file của tài liệu là "A"): "Theo thông tin của tài liệu A...", "Dựa vào file A...", "Tài liệu A đang nói về chủ đề gì?", "Tóm tắt các nội dung của tài liệu A"), hãy sử dụng thông tin này kèm theo nguồn gốc tài liệu được cung cấp trong ngữ cảnh để trả lời câu hỏi.
         - Bỏ qua các thông tin mâu thuẫn hoặc không đóng góp trực tiếp vào việc trả lời câu hỏi.
-        - NẾU NGỮ CẢNH KHÔNG CÓ CÂU TRẢ LỜI: Hãy nói "Dữ liệu toàn cục hiện tại không đủ để đưa ra câu trả lời cho vấn đề này.".
+        - NẾU NGỮ CẢNH KHÔNG CÓ CÂU TRẢ LỜI: Hãy nói "Dữ liệu toàn cục hiện tại không đủ để đưa ra câu trả lời cho câu hỏi này.".
 
         Ngữ cảnh (Các báo cáo trung gian):
         {context}
@@ -127,13 +122,14 @@ def build_global_reduce_prompt(user_input, context):
     else: 
         return f"""You are an intelligent AI assistant. Your task is to synthesize intermediate reports to create the most comprehensive answer to the user's question.
 
-        The provided context below contains SYNTHESIZED GLOBAL ANALYSES (Intermediate Answers) extracted from various data communities. It is broad and multi-dimensional.
+        The provided context below contains SYNTHESIZED GLOBAL ANALYSES (Intermediate Answers) extracted from various data communities, and the documentt's file name the reports came from. It is broad and multi-dimensional.
 
         STRICT RULES:
         - PRIORITIZE the provided context above all else. Do not fabricate data.
         - Connect disparate data points from different reports to form a coherent, highly logical, and big-picture response.
+        - The Question could come with the document's file name (e.g. (Assume the document's name in these examples is "A"), "According to the information from file A...", "Based on document A...", "Use the informations provided by document A...", "What is document A talking about?", "Summarize document A content"), use this information with the document's file name from the context to answer the question.
         - Ignore conflicting information or details that do not directly contribute to answering the question.
-        - IF THE CONTEXT DOES NOT CONTAIN THE ANSWER: You must state "The current global data is insufficient to provide an answer to this issue.".
+        - IF THE CONTEXT DOES NOT CONTAIN THE ANSWER: You must state "The current global data is insufficient to provide an answer to this question.".
 
         Context (Intermediate Reports):
         {context}
@@ -145,14 +141,19 @@ def build_global_reduce_prompt(user_input, context):
 def build_local_context_from_result(results):
     if len(results) == 0:
         return ""
-    all_chunks = []
+    all_chunks_with_source = {}
     all_entities = set()
     all_summaries = set()
 
     for res in results:
-        all_chunks.append(res['text'])
+        chunk_source = res['source_file']
+        if chunk_source not in all_chunks_with_source:
+            all_chunks_with_source[chunk_source] = []
+        all_chunks_with_source[chunk_source].append(res['text'])
+
         if res['related_entities']:
             all_entities.update(res['related_entities'])
+
         if res['related_community_summaries']:
             all_summaries.update(res['related_community_summaries'])
 
@@ -170,8 +171,10 @@ def build_local_context_from_result(results):
 
     # Chunks
     final_context += "### CHI TIẾT VĂN BẢN:\n"
-    for i, text in enumerate(all_chunks, 1):
-        final_context += f"[Nguồn {i}]: {text}\n\n"
+    for source, text_list in all_chunks_with_source.items():
+        final_context += f"[Các nguồn từ tài liệu: {source}]:\n\n"
+        for i, text in enumerate(text_list, 1):
+            final_context += f"[Nguồn {i}]: {text}\n\n"
 
     return final_context
 
@@ -183,6 +186,6 @@ def build_global_context_from_result(results):
     final_context = "Dưới đây là các thông tin ngữ cảnh được trích xuất từ cơ sở dữ liệu tri thức:\n\n"
 
     for i, res in enumerate(results):
-        final_context += f"--- BÁO CÁO CỘNG ĐỒNG {i+1} ---\n{res}\n\n"
+        final_context += f"--- BÁO CÁO CỘNG ĐỒNG {i+1} [NGUỒN TÀI LIỆU: {res['source']}] ---\n{res['full_content']}\n\n"
 
     return final_context
