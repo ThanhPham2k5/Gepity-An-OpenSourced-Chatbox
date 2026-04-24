@@ -20,10 +20,10 @@ def _is_running_in_streamlit():
     return get_script_run_ctx() is not None
 
 # Use for Windows IP
-# WINDOWS_IP = "172.25.64.1"
+WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-WINDOWS_IP = "localhost"
+# WINDOWS_IP = "localhost"
 MODELS_CACHE = "../../models_cache"
 
 class Graph_engine:
@@ -334,7 +334,7 @@ class Graph_engine:
     def global_search(self, source=None, level=None):
 
         level_source_filter = "WHERE c.source=$source" if source else ""
-        if not level: # if level was not specified, get the second highest level
+        if level is None: # if level was not specified, get the second highest level
             level_query = f"""
             MATCH (c:Community)
             {level_source_filter}
@@ -344,7 +344,11 @@ class Graph_engine:
             RETURN c.level as level
             """
             level_data = self.graph.query(level_query,{"source": source} if source else {})
-            level = level_data[0]['level']
+            if level_data and len(level_data) > 0:
+                level = level_data[0]['level']
+            else:
+                print("Cảnh báo: Không tìm thấy Community level nào trong Database!")
+                return []
 
         retrieval_source_filter = "AND comm.source = $source" if source else ""
         retrieval_query = f"""
