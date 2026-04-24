@@ -300,7 +300,7 @@ with chat_container:
                         </div>
                     """, unsafe_allow_html=True)
                     if msg.get("left_sources"):
-                        with st.expander("Nguồn (Hybrid RAG)"):
+                        with st.expander("Nguồn trích dẫn"):
                             for i, doc in enumerate(msg["left_sources"]):
                                 p = doc.metadata.get('page', 'N/A')
                                 p = p + 1 if isinstance(p, int) else p
@@ -319,7 +319,7 @@ with chat_container:
                         </div>
                     """, unsafe_allow_html=True)
                     if msg.get("right_sources"):
-                        with st.expander("Nguồn (GraphRAG)"):
+                        with st.expander("Nguồn trích dẫn"):
                             for i, doc in enumerate(msg["right_sources"]):
                                 # Lấy dữ liệu từ Dictionary của GraphRAG
                                 p = doc.get('page_number', 'N/A')
@@ -392,24 +392,21 @@ with st.popover("Đính kèm file", use_container_width=False):
         dup_v = [f.name for f in upload_file if Path(f.name).stem in existing_v]
         dup_g = [f.name for f in upload_file if Path(f.name).stem in existing_g]
         
-        col_warn1, col_warn2 = st.columns(2)
-        with col_warn1:
-            if dup_v and ("Normal" in rag_arch or "Cả hai" in rag_arch):
-                st.warning(f"⚠️ Vector đã có {len(dup_v)} file này.")
-        with col_warn2:
-            if dup_g and ("Graph" in rag_arch or "Cả hai" in rag_arch):
-                st.warning(f"⚠️ Graph đã có {len(dup_g)} file này.")
+        warn_msg = []
+        if dup_v and ("Normal" in rag_arch or "Cả hai" in rag_arch):
+            warn_msg.append(f"Vector ({len(dup_v)} file)")
+        
+        if dup_g and ("Graph" in rag_arch or "Cả hai" in rag_arch):
+            warn_msg.append(f"Graph ({len(dup_g)} file)")
+
+        if warn_msg:
+            st.warning(f"⚠️ Tài liệu đã tồn tại trong: {' | '.join(warn_msg)}")
 
         is_normal_active = "Normal" in rag_arch or "Cả hai" in rag_arch
         is_graph_active = "Graph" in rag_arch or "Cả hai" in rag_arch
         
         no_new_v = is_normal_active and not valid_v
         no_new_g = is_graph_active and not valid_g
-
-        if no_new_v and no_new_g:
-            if st.button("Làm sạch danh sách chờ", use_container_width=True):
-                st.session_state.file_uploader_key = str(uuid.uuid4())
-                st.rerun()
 
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
         
