@@ -1,5 +1,6 @@
 import time
-
+from core.processor import format_source_text 
+import markdown
 from sqlalchemy import all_
 import streamlit as st
 import os
@@ -290,11 +291,12 @@ with chat_container:
                 time_right = f"{time_str} &nbsp;•&nbsp; Thời gian trả lời: {msg['right_duration']:.2f}s" if "right_duration" in msg else time_str
 
                 with col1:
+                    html_content_col1 = markdown.markdown(msg["left_content"], extensions=['extra'])
                     st.markdown(f"""
                         <div class="bubble-header-ai_bubble">
                             <div class="bubble-answer-ai_bubble">
                                 <span class="bubble-name">{msg['left_title']}</span>
-                                <div class="ai_bubble">{msg["left_content"]}</div>
+                                <div class="ai_bubble">{html_content_col1}</div>
                                 <span class="bubble-time">{time_left}</span>
                             </div>
                         </div>
@@ -306,14 +308,16 @@ with chat_container:
                                 p = p + 1 if isinstance(p, int) else p
                                 f_name = doc.metadata.get('file_name', 'Tài liệu')
                                 st.markdown(f"**{f_name} (Trang {p})**")
-                                st.markdown(f"> {doc.page_content}")
+                                clean_text = format_source_text(doc.page_content)
+                                st.info(clean_text)
                                 
                 with col2:
+                    html_content_col2 = markdown.markdown(msg["right_content"], extensions=['extra'])
                     st.markdown(f"""
                         <div class="bubble-header-ai_bubble">
                             <div class="bubble-answer-ai_bubble">
                                 <span class="bubble-name">{msg['right_title']}</span>
-                                <div class="ai_bubble">{msg["right_content"]}</div>
+                                <div class="ai_bubble">{html_content_col2}</div>
                                 <span class="bubble-time">{time_right}</span>
                             </div>
                         </div>
@@ -327,17 +331,19 @@ with chat_container:
                                 score = doc.get('score', 0)
                                 content = doc.get('text', '')
                                 st.markdown(f"**{f_name} (Trang {p} - Độ tin cậy: {score:.2f})**")
-                                st.markdown(f"> {content}")
+                                clean_text = format_source_text(content)
+                                st.info(clean_text)
 
             else:
                 mode_label = f" - {msg.get('mode_name', '')}" if msg.get('mode_name') else ""
                 time_single = f"{time_str} &nbsp;•&nbsp; Thời gian trả lời: {msg['duration']:.2f}s" if "duration" in msg else time_str
+                html_content = markdown.markdown(msg["content"], extensions=['extra'])
                 st.markdown(f"""
                     <div class="bubble-header-ai_bubble">
                         <img src="data:image/png;base64,{ai_bubble}" class="ai_bubble-ico"/>
                         <div class="bubble-answer-ai_bubble">
                             <span class="bubble-name">Gepity{mode_label}</span>
-                            <div class="ai_bubble">{msg["content"]}</div>
+                            <div class="ai_bubble">{html_content}</div>
                             <span class="bubble-time">{time_single}</span>
                         </div>
                     </div>
@@ -362,7 +368,8 @@ with chat_container:
                                 score_text = ""
                             
                             st.markdown(f"**Nguồn {i+1} ({f_name} - Trang {p}{score_text}):**")
-                            st.markdown(f"> {content}")
+                            clean_text = format_source_text(content)
+                            st.info(clean_text)
         
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
 # user input

@@ -1,6 +1,7 @@
 import os
 import json
 import streamlit as st
+import re
 from pathlib import Path
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import OllamaLLM
@@ -21,10 +22,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use for Windows IP
-WINDOWS_IP = "172.25.64.1"
+#WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-# WINDOWS_IP = "localhost"
+WINDOWS_IP = "localhost"
 MODELS_CACHE = "../../models_cache"
 
 SAVE_DIR = "gepity_database"
@@ -195,6 +196,7 @@ class RAG_engine:
         })
 
         answer = result if isinstance(result, str) else result.get("answer", result.get("output", str(result)))
+        answer = answer.strip()
 
         return answer, relevant_docs
 
