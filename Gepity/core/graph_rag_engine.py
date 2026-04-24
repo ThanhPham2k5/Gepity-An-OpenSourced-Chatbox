@@ -6,11 +6,10 @@ from gliner import GLiNER
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks, extract_and_link_entities
-from .builder import build_local_response_prompt, build_global_reduce_prompt, build_router_prompt, build_leaf_prompt, build_parent_prompt, build_global_context_from_result, build_local_context_from_result
+from .builder import build_local_response_prompt, build_global_prompt, build_router_prompt, build_leaf_prompt, build_parent_prompt, build_global_context_from_result, build_local_context_from_result
 from utils import is_vietnamese, setup_constraints, extract_json_from_response
 from pathlib import Path
 
-from langchain_core.prompts.chat import ChatPromptTemplate
 from database import get_graph_connection
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
@@ -34,7 +33,7 @@ class Graph_engine:
         self.response_llm = ChatOllama(
             model=response_model_name, 
             temperature=0.6, # higher temperature for more creative response generation
-            num_ctx=4096,
+            num_ctx=8192,
             base_url=f"http://{WINDOWS_IP}:11434"
         )
 
@@ -52,7 +51,7 @@ class Graph_engine:
         self.summary_llm = ChatOllama(
             model=summary_model_name,
             temperature=0,
-            num_ctx=4096,
+            num_ctx=6144,
             format="json",
             base_url=f"http://{WINDOWS_IP}:11434"
         )
@@ -351,7 +350,7 @@ class Graph_engine:
         retrieval_query = f"""
         MATCH (comm:Community)
         WHERE comm.level = $level AND comm.full_content <> "" {retrieval_source_filter}
-        RETURN DISTINCT comm.full_content
+        RETURN DISTINCT comm.full_content as full_content, comm.source as source
         """
 
         results = self.graph.query(retrieval_query, {
@@ -530,7 +529,7 @@ class Graph_engine:
 
             # build prompt with graph context and user input
             print(f"DEBUG: Context length: {len(global_context)} characters")
-            prompt = build_global_reduce_prompt(user_input, context=global_context)
+            prompt = build_global_prompt(user_input, context=global_context)
             response = self.response_llm.invoke(prompt)
 
             return response.content, []

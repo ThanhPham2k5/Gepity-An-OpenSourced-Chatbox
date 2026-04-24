@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from langchain_neo4j import Neo4jGraph, Neo4jVector
+from langchain_neo4j import Neo4jGraph
 
 # Tìm đường dẫn đến file .env ở thư mục gốc (Gepity-An-OpenSourced-Chatbox)
 # __file__ là database.py -> parent là Gepity/ -> parent tiếp theo là thư mục gốc
