@@ -484,9 +484,15 @@ if user_req:
         rag_arch = st.session_state.get("rag_architecture", "NormalRAG")
 
         vector_search_kwargs = {"k": 3}
-        file_filter_graph = None
-        if filter_choice and filter_choice != "Tất cả":
-            file_filter_graph = filter_choice
+
+        # origin code (bugs chance)
+        if filter_choice:
+            file_filter_graph = filter_choice if filter_choice != "Tất cả" else None
+
+        # fix code
+        # file_filter_graph = None
+        # if filter_choice and filter_choice != "Tất cả":
+        #     file_filter_graph = filter_choice
 
         pure_vector_retriever = None
         if st.session_state.vector_store:

@@ -344,11 +344,15 @@ class Graph_engine:
             RETURN c.level as level
             """
             level_data = self.graph.query(level_query,{"source": source} if source else {})
-            if level_data and len(level_data) > 0:
-                level = level_data[0]['level']
-            else:
-                print("Cảnh báo: Không tìm thấy Community level nào trong Database!")
-                return []
+            # origin code (bugs chance)
+            level = level_data[0]['level']
+
+            # fix code
+            # if level_data and len(level_data) > 0:
+            #     level = level_data[0]['level']
+            # else:
+            #     print("Cảnh báo: Không tìm thấy Community level nào trong Database!")
+            #     return []
 
         retrieval_source_filter = "AND comm.source = $source" if source else ""
         retrieval_query = f"""
