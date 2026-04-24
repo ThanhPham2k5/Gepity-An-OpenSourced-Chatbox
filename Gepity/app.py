@@ -404,9 +404,6 @@ with st.popover("Đính kèm file", use_container_width=False):
 
         is_normal_active = "Normal" in rag_arch or "Cả hai" in rag_arch
         is_graph_active = "Graph" in rag_arch or "Cả hai" in rag_arch
-        
-        no_new_v = is_normal_active and not valid_v
-        no_new_g = is_graph_active and not valid_g
 
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
         
