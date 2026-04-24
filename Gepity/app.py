@@ -168,16 +168,34 @@ with st.sidebar:
 
     # Bộ lọc tài liệu
     st.markdown('<div class="sidebar-label">Lọc tài liệu</div>', unsafe_allow_html=True)
+    rag_arch = st.session_state.get("rag_architecture", "NormalRAG")
+    
+    vec_files = st.session_state.get("uploaded_filenames", [])
+    graph_files = st.session_state.get("uploaded_filenames_graph", [])
+
+    if "Cả hai" in rag_arch:
+        set_v = set(vec_files)
+        set_g = set(graph_files)
+        display_list = sorted(list(set_v & set_g))
+        empty_msg = "Chưa có file nào ở cả 2 hệ thống."
+    elif "Graph" in rag_arch:
+        display_list = sorted(list(graph_files))
+        empty_msg = "Chưa có file nào trong GraphRAG."
+    else:
+        display_list = sorted(list(vec_files))
+        empty_msg = "Chưa có file nào trong NormalRAG."
+
+    # 3. Hiển thị Selectbox
     filter_choice = None 
-    if "uploaded_filenames" in st.session_state and st.session_state["uploaded_filenames"]:
-        danh_sach_file = ["Tất cả"] + list(st.session_state["uploaded_filenames"])
+    if display_list:
+        options = ["Tất cả"] + display_list
         filter_choice = st.selectbox(
             "Chỉ tìm kiếm trong:",
-            options=danh_sach_file,
-            label_visibility="collapsed"
+            options=options,
+            label_visibility="collapsed",
         )
     else:
-        st.info("Chưa có file nào.")
+        st.info(empty_msg)
     
     # Dọn dẹp dữ liệu
     st.markdown('<div class="sidebar-label">Quản trị dữ liệu</div>', unsafe_allow_html=True)
@@ -365,22 +383,38 @@ with st.popover("Đính kèm file", use_container_width=False):
     needs_rerun = False 
 
     if upload_file:
-        all_existing = set(st.session_state.get("uploaded_filenames", [])) | set(st.session_state.get("uploaded_filenames_graph", []))
+        existing_v = set(st.session_state.get("uploaded_filenames", []))
+        existing_g = set(st.session_state.get("uploaded_filenames_graph", []))
         
-        valid_files = [f for f in upload_file if Path(f.name).stem not in all_existing]
-        duplicate_names = [f.name for f in upload_file if Path(f.name).stem in all_existing]
+        valid_v = [f for f in upload_file if Path(f.name).stem not in existing_v]
+        valid_g = [f for f in upload_file if Path(f.name).stem not in existing_g]
+
+        dup_v = [f.name for f in upload_file if Path(f.name).stem in existing_v]
+        dup_g = [f.name for f in upload_file if Path(f.name).stem in existing_g]
         
-        if duplicate_names:
-            st.warning(f"⚠️ Bỏ qua {len(duplicate_names)} file đã tồn tại.")
-            if not valid_files:
-                if st.button("Làm sạch danh sách chờ"):
-                    st.session_state.file_uploader_key = str(uuid.uuid4())
-                    st.rerun()
+        col_warn1, col_warn2 = st.columns(2)
+        with col_warn1:
+            if dup_v and ("Normal" in rag_arch or "Cả hai" in rag_arch):
+                st.warning(f"⚠️ Vector đã có {len(dup_v)} file này.")
+        with col_warn2:
+            if dup_g and ("Graph" in rag_arch or "Cả hai" in rag_arch):
+                st.warning(f"⚠️ Graph đã có {len(dup_g)} file này.")
+
+        is_normal_active = "Normal" in rag_arch or "Cả hai" in rag_arch
+        is_graph_active = "Graph" in rag_arch or "Cả hai" in rag_arch
+        
+        no_new_v = is_normal_active and not valid_v
+        no_new_g = is_graph_active and not valid_g
+
+        if no_new_v and no_new_g:
+            if st.button("Làm sạch danh sách chờ", use_container_width=True):
+                st.session_state.file_uploader_key = str(uuid.uuid4())
+                st.rerun()
 
         file_key = "_".join([f"{f.name}_{f.size}" for f in upload_file])
         
-        run_vector = ("Normal" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_vector_key") != file_key and (len(valid_files) > 0)
-        run_graph = ("Graph" in rag_arch or "Cả hai" in rag_arch) and st.session_state.get("last_graph_key") != file_key and (len(valid_files) > 0)
+        run_vector = is_normal_active and st.session_state.get("last_vector_key") != file_key and (len(valid_v) > 0)
+        run_graph = is_graph_active and st.session_state.get("last_graph_key") != file_key and (len(valid_g) > 0)
 
         if (run_vector or run_graph) and not st.session_state.is_processing:
             if "file_stats" in st.session_state:
