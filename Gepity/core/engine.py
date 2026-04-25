@@ -3,6 +3,7 @@ import json
 import streamlit as st
 import re
 from pathlib import Path
+from dotenv import load_dotenv
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import OllamaLLM
 from .processor import get_docs_from_uploaded_files, split_docs_into_chunks
@@ -19,14 +20,17 @@ from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from dotenv import load_dotenv
-load_dotenv()
+
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+env_path = ROOT_DIR / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Use for Windows IP
 #WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-WINDOWS_IP = "localhost"
-MODELS_CACHE = "../../models_cache"
+WINDOWS_IP = os.getenv("WINDOWS_IP", "localhost")
+MODELS_CACHE = os.getenv("MODELS_CACHE", "../models_cache")
 
 SAVE_DIR = "gepity_database"
 META_FILE = f"{SAVE_DIR}/metadata.json"

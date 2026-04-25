@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+from dotenv import load_dotenv
 from gliner import GLiNER
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
@@ -15,7 +16,10 @@ from database import get_graph_connection
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from dotenv import load_dotenv
-load_dotenv()
+
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+env_path = ROOT_DIR / '.env'
+load_dotenv(dotenv_path=env_path)
 
 def _is_running_in_streamlit():
     return get_script_run_ctx() is not None
@@ -24,8 +28,8 @@ def _is_running_in_streamlit():
 # WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
-WINDOWS_IP = "localhost"
-MODELS_CACHE = "../../models_cache"
+WINDOWS_IP = os.getenv("WINDOWS_IP", "localhost")
+MODELS_CACHE = os.getenv("MODELS_CACHE", "../models_cache")
 
 class Graph_engine:
     def __init__(self, summary_model_name="qwen2.5:3b", response_model_name="qwen2.5:3b"):
