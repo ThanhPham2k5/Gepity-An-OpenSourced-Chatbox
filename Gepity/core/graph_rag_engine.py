@@ -29,7 +29,7 @@ def _is_running_in_streamlit():
 
 # Use for WSL IP
 WINDOWS_IP = os.getenv("WINDOWS_IP", "localhost")
-MODELS_CACHE = os.getenv("MODELS_CACHE", "../models_cache")
+MODELS_CACHE = os.getenv("MODELS_CACHE", "../../models_cache")
 
 class Graph_engine:
     def __init__(self, summary_model_name="qwen2.5:3b", response_model_name="qwen2.5:3b"):

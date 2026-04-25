@@ -30,7 +30,7 @@ load_dotenv(dotenv_path=env_path)
 
 # Use for WSL IP
 WINDOWS_IP = os.getenv("WINDOWS_IP", "localhost")
-MODELS_CACHE = os.getenv("MODELS_CACHE", "../models_cache")
+MODELS_CACHE = os.getenv("MODELS_CACHE", "../../models_cache")
 
 SAVE_DIR = "gepity_database"
 META_FILE = f"{SAVE_DIR}/metadata.json"

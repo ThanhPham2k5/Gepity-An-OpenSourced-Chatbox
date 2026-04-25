@@ -19,6 +19,10 @@ META_FILE = f"{SAVE_DIR}/metadata.json"
 def disable_ui_callback():
     st.session_state.is_processing = True
 
+def reset_uploader():
+    if "file_stats" in st.session_state:
+        del st.session_state["file_stats"]
+
 # SETUP & SESSIONS -------------------------------------------------------
 st.set_page_config(page_title="Gepity AI", layout="wide")
 if "rag" not in st.session_state:
@@ -129,7 +133,8 @@ with st.sidebar:
         ],
         key="rag_architecture",
         horizontal=True,
-        disabled=st.session_state.is_processing
+        disabled=st.session_state.is_processing,
+        on_change=reset_uploader
     )
 
     # Section: Cài đặt Chunk 
@@ -333,10 +338,10 @@ with chat_container:
                             for i, doc in enumerate(msg["right_sources"]):
                                 # Lấy dữ liệu từ Dictionary của GraphRAG
                                 p = doc.get('page_number', 'N/A')
-                                f_name = doc.get('file_name', 'Tài liệu')
+                                f_name = doc.get('source_file', 'Tài liệu')
                                 score = doc.get('score', 0)
                                 content = doc.get('text', '')
-                                st.markdown(f"**{f_name} (Trang {p} - Độ tin cậy: {score:.2f})**")
+                                st.markdown(f"**{f_name} (Trang {p})**")
                                 clean_text = format_source_text(content)
                                 st.info(clean_text)
 
@@ -371,7 +376,7 @@ with chat_container:
                                 f_name = doc.metadata.get('file_name', 'Tài liệu')
                                 content = doc.page_content
                             
-                            st.markdown(f"**Nguồn {i+1} ({f_name} - Trang {p})**")
+                            st.markdown(f"**{f_name} (Trang {p})**")
                             clean_text = format_source_text(content)
                             st.info(clean_text)
         
@@ -387,15 +392,15 @@ user_req = st.chat_input(
 st.markdown('<div class="chat-input-container-anchor"></div>', unsafe_allow_html=True)
 with st.popover(
     "Đính kèm file", 
-    use_container_width=False,
-    disabled=st.session_state.is_processing):
+    use_container_width=False):
     
     upload_file = st.file_uploader(
         "Upload tài liệu",
         type=["pdf", "docx"],
         label_visibility="collapsed",
         accept_multiple_files=True,
-        key=st.session_state.file_uploader_key
+        key=st.session_state.file_uploader_key,
+        disabled=st.session_state.is_processing
     )
 
     rag_arch = st.session_state.get("rag_architecture", "NormalRAG")

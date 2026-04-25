@@ -143,7 +143,7 @@ NEO4J_DATABASENAME="neo4j"
 
 HF_TOKEN="YOUR-HUGGING-FACE-TOKEN"
 
-MODELS_CACHE=../models_cache
+MODELS_CACHE=../../models_cache
 WINDOWS_IP=localhost
 ```
 
