@@ -132,7 +132,7 @@ You need to configure the .env file to connect the application to your Neo4j dat
 cp .env_example .env
 ```
 
-3. Open the .env file and update the values with your actual database credentials and token:
+3. Open the .env file and update the values with your actual database credentials, token, model path and IP:
 
 ```
 # Example .env configuration
@@ -142,9 +142,12 @@ NEO4J_PASSWORD="your-neo4j-password"
 NEO4J_DATABASENAME="neo4j"
 
 HF_TOKEN="YOUR-HUGGING-FACE-TOKEN"
+
+MODELS_CACHE=../models_cache
+WINDOWS_IP=localhost
 ```
 
-(Note: If you are running WSL and Neo4j is on Windows, use ip route | grep default to find the correct IP address instead of localhost).
+(Note: If you are running the app inside WSL and Neo4j is hosted on Windows, use ip route | grep default in the WSL terminal to find the correct Windows IP address instead of using localhost).
 
 ### 🔑 How to get Hugging Face Token (HF_TOKEN)
 
