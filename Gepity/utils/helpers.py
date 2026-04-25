@@ -36,6 +36,18 @@ def setup_constraints(graph):
     for cypher in constraints_cypher:
         graph.query(cypher)
 
+def fix_markdown_indentation(text):
+    # Tìm các dòng bắt đầu bằng dấu gạch ngang "-" mà phía trước có khoảng trắng
+    # Ép chúng thụt lề đủ 4 dấu cách để Markdown nhận diện là danh sách con
+    lines = text.split('\n')
+    fixed_lines = []
+    for line in lines:
+        if line.strip().startswith('-'):
+            fixed_lines.append('    ' + line.lstrip())
+        else:
+            fixed_lines.append(line)
+    return '\n'.join(fixed_lines)
+
 def extract_json_from_response(content):
     """Sử dụng Regex để tìm và bóc tách khối JSON từ phản hồi của LLM."""
     # Tìm kiếm khối bắt đầu bằng { và kết thúc bằng }

@@ -1,20 +1,23 @@
 import time
 from core.processor import format_source_text 
 import markdown
-from sqlalchemy import all_
 import streamlit as st
 import os
 import json
 import shutil
 from datetime import datetime 
 import streamlit.components.v1 as components
-from utils.helpers import img_to_base64, update_current_chat_to_history
+from utils.helpers import img_to_base64, update_current_chat_to_history, fix_markdown_indentation
 from core import RAG_engine, Graph_engine
 import uuid
 from pathlib import Path
 
 SAVE_DIR = "gepity_database"
 META_FILE = f"{SAVE_DIR}/metadata.json"
+
+
+def disable_ui_callback():
+    st.session_state.is_processing = True
 
 # SETUP & SESSIONS -------------------------------------------------------
 st.set_page_config(page_title="Gepity AI", layout="wide")
@@ -101,7 +104,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     # Action Button
-    if st.button("+ Cuộc trò chuyện mới", type="primary"):
+    if st.button("+ Cuộc trò chuyện mới", type="primary", disabled=st.session_state.is_processing):
         update_current_chat_to_history()
         
         st.session_state.messages = []
@@ -114,7 +117,8 @@ with st.sidebar:
         "Tùy chọn chế độ tìm kiếm:",
         options=["Vector search", "Hybrid search"],
         key="core_search_method",
-        horizontal=True
+        horizontal=True,
+        disabled=st.session_state.is_processing
     )
     st.radio(
         "Tùy chọn chế độ truy xuất dữ liệu:",
@@ -124,12 +128,13 @@ with st.sidebar:
             "Cả hai"
         ],
         key="rag_architecture",
-        horizontal=True
+        horizontal=True,
+        disabled=st.session_state.is_processing
     )
 
     # Section: Cài đặt Chunk 
     st.markdown('<div class="sidebar-label">Cài đặt băm dữ liệu</div>', unsafe_allow_html=True)
-    with st.expander("Tùy chỉnh Chunk Parameters", expanded=False):
+    with st.expander("Tùy chỉnh Chunk Parameters", expanded=False, ):
         chunk_size = st.slider(
             "Chunk Size (Kích thước đoạn)", 
             min_value=100, max_value=2000, value=800, step=100,
@@ -158,7 +163,7 @@ with st.sidebar:
     st.markdown('<div class="sections-title">LỊCH SỬ TRÒ CHUYỆN</div>', unsafe_allow_html=True)
     with st.container(height=150):
         for chat in st.session_state.chat_history:
-            if st.button(chat['title'], key=f"hist_{chat['id']}", use_container_width=True, type="secondary"):
+            if st.button(chat['title'], key=f"hist_{chat['id']}", use_container_width=True, type="secondary", disabled=st.session_state.is_processing):
                 update_current_chat_to_history()
                 
                 st.session_state.messages = chat['messages'].copy()
@@ -194,6 +199,7 @@ with st.sidebar:
             "Chỉ tìm kiếm trong:",
             options=options,
             label_visibility="collapsed",
+            disabled=st.session_state.is_processing
         )
     else:
         st.info(empty_msg)
@@ -203,10 +209,10 @@ with st.sidebar:
     
     col_del_1, col_del_2 = st.columns(2)
     with col_del_1:
-        if st.button("🗑️ Xóa Chat", use_container_width=True):
+        if st.button("🗑️ Xóa Chat", use_container_width=True, disabled=st.session_state.is_processing):
             confirm_action_dialog("history")
     with col_del_2:
-        if st.button("📂 Xóa Docs", use_container_width=True):
+        if st.button("📂 Xóa Docs", use_container_width=True, disabled=st.session_state.is_processing):
             confirm_action_dialog("all")
 
     # Section: Hướng dẫn
@@ -291,7 +297,7 @@ with chat_container:
                 time_right = f"{time_str} &nbsp;•&nbsp; Thời gian trả lời: {msg['right_duration']:.2f}s" if "right_duration" in msg else time_str
 
                 with col1:
-                    html_content_col1 = markdown.markdown(msg["left_content"], extensions=['extra'])
+                    html_content_col1 = markdown.markdown(msg["left_content"], extensions=['extra', 'sane_lists', 'nl2br'])
                     st.markdown(f"""
                         <div class="bubble-header-ai_bubble">
                             <div class="bubble-answer-ai_bubble">
@@ -312,7 +318,7 @@ with chat_container:
                                 st.info(clean_text)
                                 
                 with col2:
-                    html_content_col2 = markdown.markdown(msg["right_content"], extensions=['extra'])
+                    html_content_col2 = markdown.markdown(msg["right_content"], extensions=['extra', 'sane_lists', 'nl2br'])
                     st.markdown(f"""
                         <div class="bubble-header-ai_bubble">
                             <div class="bubble-answer-ai_bubble">
@@ -337,7 +343,7 @@ with chat_container:
             else:
                 mode_label = f" - {msg.get('mode_name', '')}" if msg.get('mode_name') else ""
                 time_single = f"{time_str} &nbsp;•&nbsp; Thời gian trả lời: {msg['duration']:.2f}s" if "duration" in msg else time_str
-                html_content = markdown.markdown(msg["content"], extensions=['extra'])
+                html_content = markdown.markdown(msg["content"], extensions=['extra', 'sane_lists', 'nl2br'])
                 st.markdown(f"""
                     <div class="bubble-header-ai_bubble">
                         <img src="data:image/png;base64,{ai_bubble}" class="ai_bubble-ico"/>
@@ -358,26 +364,32 @@ with chat_container:
                                 p = doc.get('page_number', 'N/A')
                                 f_name = doc.get('source_file', 'Tài liệu')
                                 content = doc.get('text', '')
-                                score_text = f" - Score: {doc.get('score', 0):.2f}"
                             else:
                                 # Nếu là Vector RAG (Document Object)
                                 p = doc.metadata.get('page', 'N/A')
                                 p = p + 1 if isinstance(p, int) else p
                                 f_name = doc.metadata.get('file_name', 'Tài liệu')
                                 content = doc.page_content
-                                score_text = ""
                             
-                            st.markdown(f"**Nguồn {i+1} ({f_name} - Trang {p}{score_text}):**")
+                            st.markdown(f"**Nguồn {i+1} ({f_name} - Trang {p})**")
                             clean_text = format_source_text(content)
                             st.info(clean_text)
         
 # UPLOAD FILE & USER INPUT -------------------------------------------------------
 # user input
-user_req = st.chat_input(placeholder="Nhập yêu cầu của bạn...")
+user_req = st.chat_input(
+    placeholder="Nhập yêu cầu của bạn...",
+    on_submit=disable_ui_callback,
+    disabled=st.session_state.is_processing
+)
 
 # upload file
 st.markdown('<div class="chat-input-container-anchor"></div>', unsafe_allow_html=True)
-with st.popover("Đính kèm file", use_container_width=False):
+with st.popover(
+    "Đính kèm file", 
+    use_container_width=False,
+    disabled=st.session_state.is_processing):
+    
     upload_file = st.file_uploader(
         "Upload tài liệu",
         type=["pdf", "docx"],
@@ -510,6 +522,7 @@ with st.popover("Đính kèm file", use_container_width=False):
 st.markdown('</div>', unsafe_allow_html=True)
 
 if user_req:
+
     current_time = datetime.now().strftime("%H:%M · %d/%m/%Y")
     st.session_state.messages.append({"role": "user", "content": user_req, "time": current_time})
     
@@ -544,6 +557,7 @@ if user_req:
         isHybrid = True if core_method == "Hybrid search" else False
 
         normal_rag_name = f"NormalRAG ({core_method})"
+        graph_rag_name = f"GraphRAG ({core_method})"
 
         start_response_time = time.time()
         if "Cả hai" in rag_arch:
@@ -556,12 +570,14 @@ if user_req:
             start_graph = time.time()
             res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req, file_filter_graph, isHybrid)
             duration_graph = time.time() - start_graph
+            print(f"DEBUG: Standard RAG answer: {res_normal}")
+            print(f"DEBUG: Graph RAG answer: {res_graph}")
 
             st.session_state.messages.append({
                 "role": "ai", "is_compare": True, 
                 "left_title": normal_rag_name,
                 "left_content": res_normal, "left_sources": sources_normal, "left_duration": duration_normal,
-                "right_title": "GraphRAG",
+                "right_title": graph_rag_name,
                 "right_content": res_graph, "right_sources": sources_graph, "right_duration": duration_graph,
                 "time": ai_time,
             })
@@ -569,13 +585,14 @@ if user_req:
         elif "Graph" in rag_arch:
             res_graph, sources_graph = st.session_state.graph_engine.get_response(user_req, file_filter_graph, isHybrid)
             duration = time.time() - start_response_time
+            print(f"DEBUG: Graph RAG answer: {res_graph}")
             st.session_state.messages.append({
                 "role": "ai", 
                 "is_compare": False, 
                 "content": res_graph, 
                 "sources": sources_graph, 
                 "time": ai_time, 
-                "mode_name": "GraphRAG",
+                "mode_name": graph_rag_name,
                 "duration": duration
             })
 
@@ -584,6 +601,7 @@ if user_req:
                 user_req, retriever=active_retriever, filter_filename=filter_choice, chat_history=st.session_state.messages
             )
             duration = time.time() - start_response_time
+            print(f"DEBUG: Standard RAG answer: {res_normal}")
             st.session_state.messages.append({
                 "role": "ai", 
                 "is_compare": False, 
@@ -594,7 +612,9 @@ if user_req:
                 "duration": duration
             })
 
-        st.rerun()
+    # Sau khi xử lý xong
+    st.session_state.is_processing = False
+    st.rerun()
 
 # JAVASCRIPT AUTO-SCROLL -------------------------------------------------------
 # only run js when there is message in session, to avoid scroll to bottom when user first open the page
