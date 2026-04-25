@@ -5,8 +5,8 @@ import time
 
 def test_extraction(engine):
     file_paths = [
-        "../LAB_01_Software Requirements Specification.pdf",
-        "../project_report_final.pdf"
+        "../../LAB_01_Software Requirements Specification.pdf",
+        "../../project_report_final.pdf"
     ]   
     docs_with_chunks = {}
 

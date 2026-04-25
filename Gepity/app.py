@@ -219,7 +219,7 @@ with st.sidebar:
     st.markdown("""
         <div class="config-card">
             <div class="config-key">Mô hình đang dùng</div>
-            <div class="config-val">qwen2.5:7b</div>
+            <div class="config-val">qwen2.5:3b</div>
             <div class="status-online">
                 <div class="dot"></div> Online
             </div>
@@ -243,7 +243,7 @@ st.markdown(f"""
         </div>
         <div class="header-right">
             <div class="header-status-dot"></div>
-            <div class="header-status-text">qwen2.5:7b</div>
+            <div class="header-status-text">qwen2.5:3b</div>
         </div>
     </div>
 """, unsafe_allow_html=True)

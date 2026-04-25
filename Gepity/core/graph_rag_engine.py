@@ -51,7 +51,7 @@ class Graph_engine:
         self.summary_llm = ChatOllama(
             model=summary_model_name,
             temperature=0,
-            num_ctx=6144,
+            num_ctx=4096,
             format="json",
             base_url=f"http://{WINDOWS_IP}:11434"
         )
