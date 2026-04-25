@@ -1,9 +1,26 @@
 import os
+import re
 import tempfile
 import nltk
 import itertools
 from langchain_community.document_loaders import PDFPlumberLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+def format_source_text(text):
+    # 1. Thêm xuống dòng trước các số thứ tự ở đầu mục (Ví dụ: "1. ", "2. ", "10. ")
+    # (?<!\d) đảm bảo nó không cắt nhầm số thập phân như 3.14
+    text = re.sub(r'(?<!\d)(\d+\.\s)', r'\n\n\1', text)
+    
+    # 2. Thêm xuống dòng trước các dấu bullet point (•) hoặc (-)
+    text = re.sub(r'([•])\s', r'\n- ', text)
+    
+    # 3. Dọn dẹp các khoảng trắng/xuống dòng thừa
+    text = re.sub(r'\n\s*\n', '\n\n', text)
+
+    # # 4. Xóa thẻ ** nhưng giữ lại nội dung bên trong
+    # text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    
+    return text.strip()
 
 def get_docs_from_uploaded_files(uploaded_files: list):
     all_docs = []

@@ -25,6 +25,7 @@ pdfplumber
 docx2txt
 pypdf
 reportlab
+markdown
 
 # Keyword Search
 rank_bm25

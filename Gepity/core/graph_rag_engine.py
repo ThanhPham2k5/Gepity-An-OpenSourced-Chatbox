@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import os
+import re
 from gliner import GLiNER
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
@@ -531,8 +532,10 @@ class Graph_engine:
             print(f"DEBUG: Context length: {len(global_context)} characters")
             prompt = build_global_prompt(user_input, context=global_context)
             response = self.response_llm.invoke(prompt)
+            answer = response.content.strip()
+            answer = re.sub(r'\n\s*\n', '\n', response.content)
 
-            return response.content, []
+            return answer, []
         elif question_type == "local":
             if not hybrid_search:
                 raw_results = self.local_search(user_input, doc_source)
@@ -551,11 +554,16 @@ class Graph_engine:
             print(f"DEBUG: Context length: {len(graph_context)} characters")
             prompt = build_local_response_prompt(user_input, context=graph_context)
             response = self.response_llm.invoke(prompt)
+            answer = response.content.strip()
+            answer = re.sub(r'\n\s*\n', '\n', response.content)
 
-            return response.content, raw_results
+            return answer, raw_results
         else:
             response = self.response_llm.invoke(user_input)
-            return response.content, []
+            answer = response.content.strip()
+            answer = re.sub(r'\n\s*\n', '\n', response.content)
+
+            return answer, []
         
     def process_single_chunk(self, chunk, doc_source):
         # Prepare Document and Chunk Data

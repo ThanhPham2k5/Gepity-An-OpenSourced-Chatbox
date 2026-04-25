@@ -1,6 +1,7 @@
 import os
 import json
 import streamlit as st
+import re
 from pathlib import Path
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import OllamaLLM
@@ -21,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use for Windows IP
-# WINDOWS_IP = "172.25.64.1"
+#WINDOWS_IP = "172.25.64.1"
 
 # Use for WSL IP
 WINDOWS_IP = "localhost"
@@ -123,7 +124,7 @@ class RAG_engine:
 
         if "CHITCHAT" in intent:
             prompt_chitchat = ChatPromptTemplate.from_messages([
-                ("system", "Bạn là một trợ lý AI thân thiện. Hãy trả lời câu giao tiếp của người dùng một cách tự nhiên."),
+                ("system", "Bạn là một trợ lý AI thân thiện. Hãy trả lời câu giao tiếp của người dùng một cách tự nhiên bằng Tiếng Việt."),
                 ("human", "{input}"),
             ])
             chain_chitchat = prompt_chitchat | self.llm
@@ -195,6 +196,7 @@ class RAG_engine:
         })
 
         answer = result if isinstance(result, str) else result.get("answer", result.get("output", str(result)))
+        answer = answer.strip()
 
         return answer, relevant_docs
 
