@@ -81,10 +81,10 @@ def run_graph_evaluation():
     GROQ_API_KEY = ""
 
     TEST_DOCUMENTS = ["../LAB_01_Software Requirements Specification.pdf"] 
-    # CHUNK_SIZE = 500
-    # CHUNK_OVERLAP = 50
-    CHUNK_SIZE = 800
-    CHUNK_OVERLAP = 80
+    CHUNK_SIZE = 500
+    CHUNK_OVERLAP = 50
+    # CHUNK_SIZE = 800
+    # CHUNK_OVERLAP = 80
     # CHUNK_SIZE = 1000
     # CHUNK_OVERLAP = 100
     # CHUNK_SIZE = 500
@@ -112,18 +112,18 @@ def run_graph_evaluation():
             "ground_truth": "Sử dụng AI/ML (Trí tuệ nhân tạo/Học máy)."
         },
 
-        # {
-        #     "question": "Liệt kê các loại câu hỏi mà giảng viên có thể tạo trong hệ thống bài tập.",
-        #     "ground_truth": "Trắc nghiệm, tự luận, điền khuyết."
-        # },
-        # {
-        #     "question": "Để đăng ký tài khoản, người dùng cần thực hiện bước xác thực nào?",
-        #     "ground_truth": "Xác thực qua email."
-        # },
-        # {
-        #     "question": "E-Learn Plus tuân thủ những quy định bảo mật và dữ liệu quốc tế nào?",
-        #     "ground_truth": "Tuân thủ GDPR và các quy định về dữ liệu."
-        # },
+        {
+            "question": "Liệt kê các loại câu hỏi mà giảng viên có thể tạo trong hệ thống bài tập.",
+            "ground_truth": "Trắc nghiệm, tự luận, điền khuyết."
+        },
+        {
+            "question": "Để đăng ký tài khoản, người dùng cần thực hiện bước xác thực nào?",
+            "ground_truth": "Xác thực qua email."
+        },
+        {
+            "question": "E-Learn Plus tuân thủ những quy định bảo mật và dữ liệu quốc tế nào?",
+            "ground_truth": "Tuân thủ GDPR và các quy định về dữ liệu."
+        },
         # {
         #     "question": "Các tính năng nào thuộc về Tương thích Đa nền tảng?",
         #     "ground_truth": "Responsive design, tương thích trình duyệt chính, ứng dụng mobile native (iOS/Android), hoạt động offline cơ bản, đồng bộ đa thiết bị."
@@ -159,13 +159,13 @@ def run_graph_evaluation():
     source_name = Path(TEST_DOCUMENTS[0]).stem
     
     # --- Giai đoạn 1: Indexing ---
-    # print(f"\n[1/3] Indexing vào Neo4j...")
-    # files = [FakeUploadedFile(p) for p in TEST_DOCUMENTS]
-    # docs_with_chunks = engine.process_document(files, CHUNK_SIZE, CHUNK_OVERLAP)
-    # for filename, chunks in docs_with_chunks.items():
-    #     engine.sync_to_graph(chunks, source=filename)
-    # engine.create_vector_indexes()
-    # engine.create_fulltext_index()
+    print(f"\n[1/3] Indexing vào Neo4j...")
+    files = [FakeUploadedFile(p) for p in TEST_DOCUMENTS]
+    docs_with_chunks = engine.process_document(files, CHUNK_SIZE, CHUNK_OVERLAP)
+    for filename, chunks in docs_with_chunks.items():
+        engine.sync_to_graph(chunks, source=filename)
+    engine.create_vector_indexes()
+    engine.create_fulltext_index()
 
 
     # --- Giai đoạn 2: Inference ---
